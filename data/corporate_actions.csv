@@ -1,1 +1,6 @@
-ticker,action_type,announcement_date,ex_date,amount,notes
+ticker,action_type,amount,announcement_date,ex_date,record_date,source_note
+ITC,Dividend (Final),7.85,2025-05-22,2025-05-28,2025-05-29,"SAMPLE DATA — placeholder, not verified against NSE"
+COALINDIA,Dividend (Interim),10.25,2025-10-28,2025-11-04,2025-11-05,"SAMPLE DATA — placeholder, not verified against NSE"
+TCS,Dividend (Special),67.00,2025-04-24,2025-05-16,2025-05-17,"SAMPLE DATA — placeholder, not verified against NSE"
+INFY,Dividend (Final),22.00,2025-04-17,2025-05-30,2025-05-31,"SAMPLE DATA — placeholder, not verified against NSE"
+HCLTECH,Dividend (Interim),18.00,2025-10-13,2025-10-22,2025-10-23,"SAMPLE DATA — placeholder, not verified against NSE"

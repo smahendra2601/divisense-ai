@@ -1,1 +1,116 @@
 alias,ticker,company_name
+Infosys,INFY,Infosys Ltd
+Infy,INFY,Infosys Ltd
+TCS,TCS,Tata Consultancy Services Ltd
+Tata Consultancy,TCS,Tata Consultancy Services Ltd
+Tata Consultancy Services,TCS,Tata Consultancy Services Ltd
+Wipro,WIPRO,Wipro Ltd
+HCL,HCLTECH,HCL Technologies Ltd
+HCL Tech,HCLTECH,HCL Technologies Ltd
+HCL Technologies,HCLTECH,HCL Technologies Ltd
+Tech Mahindra,TECHM,Tech Mahindra Ltd
+TechM,TECHM,Tech Mahindra Ltd
+LTIMindtree,LTIM,LTIMindtree Ltd
+LTI Mindtree,LTIM,LTIMindtree Ltd
+ITC,ITC,ITC Ltd
+Reliance,RELIANCE,Reliance Industries Ltd
+RIL,RELIANCE,Reliance Industries Ltd
+Reliance Industries,RELIANCE,Reliance Industries Ltd
+HUL,HINDUNILVR,Hindustan Unilever Ltd
+Hindustan Unilever,HINDUNILVR,Hindustan Unilever Ltd
+Nestle,NESTLEIND,Nestle India Ltd
+Nestle India,NESTLEIND,Nestle India Ltd
+Britannia,BRITANNIA,Britannia Industries Ltd
+Tata Consumer,TATACONSUM,Tata Consumer Products Ltd
+Tata Consumer Products,TATACONSUM,Tata Consumer Products Ltd
+Asian Paints,ASIANPAINT,Asian Paints Ltd
+Titan,TITAN,Titan Company Ltd
+SBI,SBIN,State Bank of India
+State Bank,SBIN,State Bank of India
+State Bank of India,SBIN,State Bank of India
+HDFC Bank,HDFCBANK,HDFC Bank Ltd
+HDFCBANK,HDFCBANK,HDFC Bank Ltd
+ICICI Bank,ICICIBANK,ICICI Bank Ltd
+ICICI,ICICIBANK,ICICI Bank Ltd
+Kotak,KOTAKBANK,Kotak Mahindra Bank Ltd
+Kotak Bank,KOTAKBANK,Kotak Mahindra Bank Ltd
+Kotak Mahindra,KOTAKBANK,Kotak Mahindra Bank Ltd
+Axis Bank,AXISBANK,Axis Bank Ltd
+Axis,AXISBANK,Axis Bank Ltd
+IndusInd,INDUSINDBK,IndusInd Bank Ltd
+IndusInd Bank,INDUSINDBK,IndusInd Bank Ltd
+Bajaj Finance,BAJFINANCE,Bajaj Finance Ltd
+Bajaj Finserv,BAJAJFINSV,Bajaj Finserv Ltd
+SBI Life,SBILIFE,SBI Life Insurance Company Ltd
+HDFC Life,HDFCLIFE,HDFC Life Insurance Company Ltd
+Shriram Finance,SHRIRAMFIN,Shriram Finance Ltd
+Shriram,SHRIRAMFIN,Shriram Finance Ltd
+Maruti,MARUTI,Maruti Suzuki India Ltd
+Maruti Suzuki,MARUTI,Maruti Suzuki India Ltd
+Tata Motors,TATAMOTORS,Tata Motors Ltd
+Mahindra,M&M,Mahindra & Mahindra Ltd
+Mahindra & Mahindra,M&M,Mahindra & Mahindra Ltd
+M&M,M&M,Mahindra & Mahindra Ltd
+Bajaj Auto,BAJAJ-AUTO,Bajaj Auto Ltd
+Hero,HEROMOTOCO,Hero MotoCorp Ltd
+Hero MotoCorp,HEROMOTOCO,Hero MotoCorp Ltd
+Eicher,EICHERMOT,Eicher Motors Ltd
+Eicher Motors,EICHERMOT,Eicher Motors Ltd
+Royal Enfield,EICHERMOT,Eicher Motors Ltd
+Sun Pharma,SUNPHARMA,Sun Pharmaceutical Industries Ltd
+Sun Pharmaceutical,SUNPHARMA,Sun Pharmaceutical Industries Ltd
+Cipla,CIPLA,Cipla Ltd
+Dr Reddy,DRREDDY,Dr Reddys Laboratories Ltd
+Dr Reddys,DRREDDY,Dr Reddys Laboratories Ltd
+Divis,DIVISLAB,Divis Laboratories Ltd
+Divis Labs,DIVISLAB,Divis Laboratories Ltd
+Apollo Hospitals,APOLLOHOSP,Apollo Hospitals Enterprise Ltd
+Apollo,APOLLOHOSP,Apollo Hospitals Enterprise Ltd
+UltraTech,ULTRACEMCO,UltraTech Cement Ltd
+UltraTech Cement,ULTRACEMCO,UltraTech Cement Ltd
+Grasim,GRASIM,Grasim Industries Ltd
+Tata Steel,TATASTEEL,Tata Steel Ltd
+JSW Steel,JSWSTEEL,JSW Steel Ltd
+Hindalco,HINDALCO,Hindalco Industries Ltd
+Bharti Airtel,BHARTIARTL,Bharti Airtel Ltd
+Airtel,BHARTIARTL,Bharti Airtel Ltd
+Bharti,BHARTIARTL,Bharti Airtel Ltd
+Adani Enterprises,ADANIENT,Adani Enterprises Ltd
+Adani Ent,ADANIENT,Adani Enterprises Ltd
+Adani Ports,ADANIPORTS,Adani Ports and Special Economic Zone Ltd
+L&T,LT,Larsen & Toubro Ltd
+Larsen,LT,Larsen & Toubro Ltd
+Larsen & Toubro,LT,Larsen & Toubro Ltd
+Larsen and Toubro,LT,Larsen & Toubro Ltd
+Coal India,COALINDIA,Coal India Ltd
+ONGC,ONGC,Oil and Natural Gas Corporation Ltd
+Oil and Natural Gas,ONGC,Oil and Natural Gas Corporation Ltd
+NTPC,NTPC,NTPC Ltd
+Power Grid,POWERGRID,Power Grid Corporation of India Ltd
+Powergrid,POWERGRID,Power Grid Corporation of India Ltd
+GAIL,GAIL,GAIL India Ltd
+BPCL,BPCL,Bharat Petroleum Corporation Ltd
+Bharat Petroleum,BPCL,Bharat Petroleum Corporation Ltd
+HPCL,HINDPETRO,Hindustan Petroleum Corporation Ltd
+Hindustan Petroleum,HINDPETRO,Hindustan Petroleum Corporation Ltd
+IOC,IOC,Indian Oil Corporation Ltd
+Indian Oil,IOC,Indian Oil Corporation Ltd
+Oil India,OIL,Oil India Ltd
+PFC,PFC,Power Finance Corporation Ltd
+Power Finance,PFC,Power Finance Corporation Ltd
+REC,RECLTD,REC Ltd
+IRFC,IRFC,Indian Railway Finance Corporation Ltd
+Indian Railway Finance,IRFC,Indian Railway Finance Corporation Ltd
+IRCTC,IRCTC,Indian Railway Catering and Tourism Corporation Ltd
+NHPC,NHPC,NHPC Ltd
+SAIL,SAIL,Steel Authority of India Ltd
+Steel Authority,SAIL,Steel Authority of India Ltd
+NMDC,NMDC,NMDC Ltd
+NALCO,NATIONALUM,National Aluminium Company Ltd
+National Aluminium,NATIONALUM,National Aluminium Company Ltd
+BEL,BEL,Bharat Electronics Ltd
+Bharat Electronics,BEL,Bharat Electronics Ltd
+HAL,HAL,Hindustan Aeronautics Ltd
+Hindustan Aeronautics,HAL,Hindustan Aeronautics Ltd
+Vedanta,VEDL,Vedanta Ltd
+VEDL,VEDL,Vedanta Ltd
