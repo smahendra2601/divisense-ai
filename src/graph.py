@@ -96,7 +96,17 @@ def _forecast_prompt(state: dict) -> str:
         "(ex-date ~Oct–Mar) and a FINAL dividend after the March year-end "
         "(ex-date ~Jun–Aug) — NOT US-style quarterly dividends. If the user refers to "
         "\"next quarter\", map it to this company's actual interim/final cadence and "
-        "say so explicitly.\n"
+        "say so explicitly.\n\n"
+        "HOW TO BUILD amount_range_inr: anchor it on `total_dividends_last_fy` — do not "
+        "propose a range far below it without reason. Then adjust for direction using "
+        "`dividend_cagr_5yr`, `recent_trajectory`, and `consecutive_increase_streak`: "
+        "if trajectory is rising with a positive streak, the range should skew AT OR "
+        "ABOVE last year's total (e.g. last_fy to last_fy × (1 + cagr%)); if trajectory "
+        "is falling or the payout ratio is stretched (>90%) with weak FCF coverage "
+        "(<1×), the range should skew AT OR BELOW last year's total instead; if mixed or "
+        "unclear, center the range near last year's total with modest width. The low end "
+        "should never be implausibly small (e.g. near zero) unless the metrics show "
+        "genuine distress (falling trajectory AND weak coverage AND stretched payout).\n"
     )
 
     if state.get("intent") == "dividend_qa":

@@ -228,3 +228,109 @@ def test_rag_snippets_appear_in_trace(wire):
     assert len(state["rag_context"]) == 1
     assert "1 annual-report snippet" in state["final_report"]
     assert "itc.pdf p12" in state["final_report"]
+
+
+# ── smoke tests: the five scenarios exercised live against real
+# providers (see conversation record) — pinned here as fast, offline
+# regressions. Numeric grounding itself can't be meaningfully re-tested
+# with a scripted LLM (the mock controls the numbers by construction);
+# that was verified separately with an automated grounding check against
+# live Groq/Gemini output, which found zero fabricated numbers.
+def test_smoke_bare_ticker_itc(wire):
+    """'ITC' -> forecast_single, 2 LLM calls (intent skipped), no retry."""
+    llm = _ScriptedLLM()
+    wire(llm)
+
+    state = graph.run_pipeline("ITC")
+
+    assert state["intent"] == "forecast_single"
+    assert state["ticker"] == "ITC"
+    assert llm.calls == {"intent": 0, "forecast": 1, "critic": 1}
+    assert state["retry_count"] == 0
+    assert state["critique"]["approved"] is True
+    assert "not investment advice" in state["final_report"]
+
+
+def test_smoke_dividend_qa_infosys_next_quarter(wire):
+    """Infosys next-quarter question -> dividend_qa/INFY, 3 LLM calls (no retry)."""
+    llm = _ScriptedLLM(
+        intent_response={
+            "intent": "dividend_qa",
+            "company_mention": "Infosys",
+            "question": "Will Infosys increase its dividend next quarter?",
+            "horizon": "next quarter",
+        },
+        forecast={**_FORECAST, "direct_answer": "Unclear — mixed signals.", "likelihood": "unclear"},
+    )
+    wire(llm)
+
+    state = graph.run_pipeline("Will Infosys increase its dividend next quarter?")
+
+    assert state["intent"] == "dividend_qa"
+    assert state["ticker"] == "INFY"
+    assert state["horizon"] == "next quarter"
+    assert llm.calls == {"intent": 1, "forecast": 1, "critic": 1}
+    assert state["retry_count"] == 0
+    report = state["final_report"]
+    assert "💬 Unclear" in report
+    assert "not investment advice" in report
+
+
+def test_smoke_forecast_coalindia_next_year(wire):
+    """Coal India next-year forecast -> forecast_single/COALINDIA, 3 LLM calls."""
+    llm = _ScriptedLLM(
+        intent_response={
+            "intent": "forecast_single",
+            "company_mention": "Coal India",
+            "question": "Forecast Coal India's dividend for next year",
+            "horizon": "next year",
+        }
+    )
+    wire(llm)
+
+    state = graph.run_pipeline("Forecast Coal India's dividend for next year")
+
+    assert state["intent"] == "forecast_single"
+    assert state["ticker"] == "COALINDIA"
+    assert state["horizon"] == "next year"
+    assert llm.calls == {"intent": 1, "forecast": 1, "critic": 1}
+    assert state["retry_count"] == 0
+    assert "not investment advice" in state["final_report"]
+
+
+def test_smoke_screener_query_is_out_of_scope(wire):
+    """A multi-company/screener question -> polite out_of_scope, 1 LLM call."""
+    fetch_calls = []
+    llm = _ScriptedLLM(
+        intent_response={"intent": "out_of_scope", "company_mention": None, "question": None, "horizon": None}
+    )
+    wire(llm, fetch=lambda t: fetch_calls.append(t) or _fake_raw(t))
+
+    state = graph.run_pipeline("Top public sector dividend paying companies")
+
+    assert state["intent"] == "out_of_scope"
+    assert state["ticker"] is None
+    assert llm.calls == {"intent": 1, "forecast": 0, "critic": 0}
+    assert fetch_calls == []  # data/ratio/forecast never touched
+    report = state["final_report"]
+    assert "Out of scope" in report
+    assert "not investment advice" in report
+
+
+def test_smoke_nonsense_ticker_is_friendly_clarify(wire):
+    """A ticker-shaped but unresolvable query ('ZZZZZ') -> friendly clarify."""
+    llm = _ScriptedLLM(
+        intent_response={"intent": "clarify", "company_mention": None, "question": None, "horizon": None}
+    )
+    wire(llm)
+
+    state = graph.run_pipeline("ZZZZZ")
+
+    assert state["intent"] == "clarify"
+    assert state["ticker"] is None
+    # Not a valid ticker, so it falls through to the LLM (one call), never data/forecast.
+    assert llm.calls == {"intent": 1, "forecast": 0, "critic": 0}
+    report = state["final_report"]
+    assert "clarify" in report.lower()
+    assert "ZZZZZ" in report
+    assert "not investment advice" in report
