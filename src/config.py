@@ -13,6 +13,12 @@ GEMINI_MODEL = "gemini-2.5-flash"        # fallback: large-context / 429s
 # ── Caching ───────────────────────────────────────────────────────────
 CACHE_TTL_SECONDS = 3600  # 1-hour disk-cache TTL for fetched market data
 
+# ── LLM quota limits (approximate free-tier caps — tune to your plan) ─
+GROQ_RPM_LIMIT = 30
+GROQ_RPD_LIMIT = 14400
+GEMINI_RPM_LIMIT = 15
+GEMINI_RPD_LIMIT = 1500
+
 # ── RAG (annual-report ingestion & retrieval) ────────────────────────
 RAG_CHUNK_SIZE = 800      # tokens per chunk
 RAG_CHUNK_OVERLAP = 100   # token overlap between chunks
@@ -26,6 +32,7 @@ CORPORATE_ACTIONS_CSV = DATA_DIR / "corporate_actions.csv"
 ANNUAL_REPORTS_DIR = DATA_DIR / "annual_reports"
 CHROMA_DIR = DATA_DIR / "chroma"
 CACHE_DIR = PROJECT_ROOT / ".diskcache"
+LLM_CACHE_DIR = CACHE_DIR / "llm"
 
 # ── Disclaimer (must appear on every user-facing output) ─────────────
 DISCLAIMER = (
