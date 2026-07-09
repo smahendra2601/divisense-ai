@@ -1,0 +1,13 @@
+langgraph
+langchain
+langchain-groq
+langchain-google-genai
+yfinance
+pandas
+chromadb
+sentence-transformers
+pdfplumber
+streamlit
+diskcache
+python-dotenv
+plotly

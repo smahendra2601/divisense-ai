@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Data artifacts (fetched / generated locally)
+data/annual_reports/
+data/chroma/
+
+# Caches
+__pycache__/
+*.py[cod]
+.diskcache/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+# Claude Code local state
+.claude/
