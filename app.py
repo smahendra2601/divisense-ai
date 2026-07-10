@@ -1,12 +1,13 @@
 """Tier 4 — Presentation: Streamlit UI.
 
-Single-page app with a natural-language question box and example chips.
-Renders the direct-answer banner (for dividend_qa), forecast card
-(amount range, expected window, colour-coded confidence badge, reasoning,
-risks), key metrics table, Plotly dividend-history chart, the "data as of
-<timestamp>" caption, the standard disclaimer, and an expandable
-agent-trace panel. Handles clarify / out_of_scope / error results
-gracefully.
+Dashboard layout: a branded navy sidebar owns all input (question box,
+example queries that pre-fill the box, the Analyze button, and a short
+"how it works"), while the full-width main panel renders the result —
+company header with live price, direct-answer banner (dividend_qa),
+forecast cards, reasoning/risks, key-metrics table beside the Plotly
+dividend-history chart, corporate actions, the "data as of" caption,
+an expandable agent trace, and the standard disclaimer. Clarify /
+out-of-scope / error results render as friendly cards.
 
 Run with:  streamlit run app.py
 """
@@ -20,15 +21,76 @@ import streamlit as st
 from src import config
 from src.ratio_engine import _annual_dividends  # FY-attributed dividend totals
 
-# ── page + minimal styling ───────────────────────────────────────────
-st.set_page_config(page_title="DiviSense AI", page_icon="📈", layout="centered")
+# ── page + styling ───────────────────────────────────────────────────
+st.set_page_config(
+    page_title="DiviSense AI",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 st.markdown(
     """
     <style>
-    .ds-badge{color:#fff;padding:2px 12px;border-radius:12px;font-size:0.85rem;font-weight:600;}
-    .ds-answer{border-left:4px solid #0969da;background:rgba(9,105,218,0.08);
-               padding:14px 18px;border-radius:6px;margin:10px 0;font-size:1.05rem;}
+    /* hide default chrome for a clean demo */
+    #MainMenu, footer {visibility: hidden;}
+
+    /* navy sidebar */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0a2b45 0%, #10395c 100%);
+        min-width: 340px;
+    }
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4,
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] li, [data-testid="stSidebar"] summary {
+        color: #eef4fa !important;
+    }
+    [data-testid="stSidebar"] hr {border-color: rgba(255,255,255,0.25);}
+
+    /* metric tiles as cards */
+    [data-testid="stMetric"] {
+        border: 1px solid rgba(49,51,63,0.14);
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: rgba(9,105,218,0.04);
+        box-shadow: 0 1px 3px rgba(16,24,40,0.06);
+    }
+
+    /* generic card */
+    .ds-card {
+        border: 1px solid rgba(49,51,63,0.14);
+        border-radius: 12px;
+        padding: 16px 20px;
+        background: rgba(9,105,218,0.03);
+        box-shadow: 0 1px 3px rgba(16,24,40,0.06);
+        margin-bottom: 8px;
+    }
+    .ds-card h4 {margin: 0 0 8px 0;}
+
+    /* direct-answer banner */
+    .ds-answer {
+        border-left: 5px solid #0969da;
+        background: rgba(9,105,218,0.08);
+        padding: 16px 20px;
+        border-radius: 8px;
+        margin: 4px 0 14px 0;
+        font-size: 1.12rem;
+    }
+
+    /* confidence badge */
+    .ds-badge {
+        color: #fff; padding: 3px 14px; border-radius: 14px;
+        font-size: 0.9rem; font-weight: 600; display: inline-block;
+    }
+
+    /* intent chip in the header */
+    .ds-chip {
+        background: rgba(9,105,218,0.12); color: #0a3d62;
+        padding: 2px 12px; border-radius: 12px; font-size: 0.8rem;
+        font-weight: 600; display: inline-block; margin-left: 8px;
+        vertical-align: middle;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -40,7 +102,6 @@ EXAMPLES = [
     "COALINDIA",
 ]
 
-# Friendly per-node captions shown while the graph streams.
 NODE_STEPS = {
     "intent_node": "🧭 Understanding your question…",
     "data_node": "📥 Fetching live market data (yfinance)…",
@@ -84,6 +145,63 @@ def _fmt(value, prefix="", suffix=""):
     return f"{prefix}{value}{suffix}"
 
 
+# ── sidebar (all input lives here) ───────────────────────────────────
+def _fill_example(example: str) -> None:
+    st.session_state["query_box"] = example
+
+
+def _submit_query() -> None:
+    query = (st.session_state.get("query_box") or "").strip()
+    if query:
+        st.session_state["pending_query"] = query
+
+
+def render_sidebar() -> None:
+    with st.sidebar:
+        st.markdown("## 📈 DiviSense AI")
+        st.markdown("Agentic dividend forecasting for NSE-listed Indian companies.")
+        st.divider()
+
+        st.markdown("#### Ask DiviSense")
+        st.text_area(
+            "Your question",
+            key="query_box",
+            placeholder="Enter a ticker or ask a question…",
+            label_visibility="collapsed",
+            height=90,
+        )
+        st.button(
+            "Analyze dividend →",
+            type="primary",
+            width="stretch",
+            on_click=_submit_query,
+        )
+
+        st.markdown("**Or try an example** *(fills the box above)*")
+        for i, example in enumerate(EXAMPLES):
+            st.button(
+                example,
+                key=f"example_{i}",
+                width="stretch",
+                on_click=_fill_example,
+                args=(example,),
+            )
+
+        st.divider()
+        with st.expander("ℹ️ How it works"):
+            st.markdown(
+                "1. **Intent** — parses your question; the ticker is resolved "
+                "by a lookup table, never guessed by AI.\n"
+                "2. **Data** — live Yahoo Finance fetch (1-hour cache).\n"
+                "3. **Metrics** — pure-code financial ratios; no AI arithmetic.\n"
+                "4. **RAG** — annual-report context, when ingested.\n"
+                "5. **Forecast + Critic** — an AI forecast, cross-checked by a "
+                "second AI pass. At most 3 AI calls per query.\n"
+                "6. **Report** — reasoning, confidence, and timestamp, always."
+            )
+        st.caption("Research tool — not investment advice.")
+
+
 # ── pipeline execution (streamed, with per-node progress) ────────────
 def execute(query: str) -> dict:
     """Stream the LangGraph pipeline, showing per-node progress; return final state."""
@@ -108,6 +226,28 @@ def execute(query: str) -> dict:
 
 
 # ── result renderers ─────────────────────────────────────────────────
+def render_company_header(state: dict) -> None:
+    raw = state.get("raw_data") or {}
+    ticker = state.get("ticker") or "?"
+    name = raw.get("company_name") or ticker
+    intent = state.get("intent")
+
+    left, right = st.columns([4, 1])
+    with left:
+        st.markdown(
+            f"## {name} <span class='ds-chip'>{ticker}</span>"
+            + (f"<span class='ds-chip'>{intent}</span>" if intent else ""),
+            unsafe_allow_html=True,
+        )
+        sector = raw.get("sector")
+        if sector:
+            st.caption(sector)
+    with right:
+        price = raw.get("current_price")
+        if price is not None:
+            st.metric("Current price", f"₹{round(price, 2)}")
+
+
 def render_direct_answer(forecast: dict) -> None:
     direct = forecast.get("direct_answer")
     if not direct:
@@ -119,27 +259,40 @@ def render_direct_answer(forecast: dict) -> None:
 
 def render_forecast_card(forecast: dict) -> None:
     st.subheader("🔮 Dividend forecast")
-    st.metric("Expected dividend (next FY)", _amount_range(forecast.get("amount_range_inr")))
-    st.markdown(f"**Expected window:** {forecast.get('expected_window') or '—'}")
-    st.markdown(_confidence_badge(forecast.get("confidence")), unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1.2, 1.4, 1])
+    with c1:
+        st.metric("Expected dividend (next FY)", _amount_range(forecast.get("amount_range_inr")))
+    with c2:
+        st.markdown(
+            "<div class='ds-card'><h4>🗓️ Expected window</h4>"
+            f"{forecast.get('expected_window') or '—'}</div>",
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            "<div class='ds-card'><h4>Confidence</h4>"
+            f"{_confidence_badge(forecast.get('confidence'))}</div>",
+            unsafe_allow_html=True,
+        )
 
+    r1, r2 = st.columns(2)
     reasoning = forecast.get("reasoning") or []
-    if reasoning:
-        st.markdown("**Reasoning**")
-        for r in reasoning:
-            st.markdown(f"- {r}")
-
     risks = forecast.get("risks") or []
-    if risks:
-        st.markdown("**Risks**")
-        for r in risks:
-            st.markdown(f"- {r}")
+    with r1:
+        if reasoning:
+            st.markdown("**Reasoning**")
+            for r in reasoning:
+                st.markdown(f"- {r}")
+    with r2:
+        if risks:
+            st.markdown("**⚠️ Risks**")
+            for r in risks:
+                st.markdown(f"- {r}")
 
 
 def render_metrics(metrics: dict) -> None:
     if not metrics:
         return
-    st.subheader("📊 Key metrics")
     payout = metrics.get("payout_ratio_5yr") or {}
     traj = metrics.get("recent_trajectory") or {}
     de = metrics.get("debt_to_equity_trend") or {}
@@ -182,11 +335,41 @@ def render_chart(raw_data: dict | None) -> None:
             "Dividend (₹/share)": [round(total, 2) for _, total, _ in last10],
         }
     )
-    st.subheader("📉 Dividend history (last 10 FYs)")
     fig = px.bar(df, x="Fiscal Year", y="Dividend (₹/share)", text="Dividend (₹/share)")
     fig.update_traces(marker_color="#0969da", textposition="outside")
-    fig.update_layout(height=340, margin=dict(l=10, r=10, t=10, b=10), yaxis_title="₹ / share")
-    st.plotly_chart(fig, width="stretch")
+    fig.update_layout(
+        height=360,
+        margin=dict(l=10, r=10, t=10, b=10),
+        yaxis_title="₹ / share",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+
+def render_corporate_actions(ticker: str) -> None:
+    from src.corp_actions import get_default_source
+
+    try:
+        actions = get_default_source().get_actions(ticker)
+    except Exception:
+        actions = []
+    with st.expander("🗓️ Corporate actions on file"):
+        if not actions:
+            st.caption("No corporate actions on file.")
+            return
+        df = pd.DataFrame(actions)
+        df = df.rename(
+            columns={
+                "action_type": "Action",
+                "amount": "Amount (₹)",
+                "announcement_date": "Announced",
+                "ex_date": "Ex-date",
+                "record_date": "Record",
+                "source_note": "Note",
+            }
+        ).drop(columns=["ticker"], errors="ignore")
+        st.dataframe(df, width="stretch", hide_index=True)
 
 
 def render_agent_trace(state: dict) -> None:
@@ -213,9 +396,13 @@ def render_agent_trace(state: dict) -> None:
             for issue in critique.get("issues") or []:
                 st.caption(f"• {issue}")
         st.markdown(f"**Forecast retries:** {state.get('retry_count', 0)}")
+        st.markdown(
+            f"**LLM calls used:** {state.get('llm_calls', 0)} "
+            f"(budget: {config.MAX_LLM_CALLS_PER_QUERY})"
+        )
         if state.get("forecast"):
             st.markdown("**Forecast (raw JSON):**")
-            st.json(state["forecast"])
+            st.json(state["forecast"], expanded=False)
 
 
 def render_clarify(state: dict) -> None:
@@ -249,6 +436,40 @@ def render_error(state: dict) -> None:
     )
 
 
+def render_welcome() -> None:
+    st.title("📈 DiviSense AI")
+    st.markdown(
+        "#### Agentic dividend forecasting for NSE-listed Indian companies"
+    )
+    st.markdown(
+        "Use the **sidebar** to enter a ticker (like `ITC`) or ask a question in "
+        "plain English — or click an example to pre-fill the box."
+    )
+    st.markdown("")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(
+            "<div class='ds-card'><h4>🧮 Deterministic numbers</h4>"
+            "Every financial metric is computed in code from live market data. "
+            "The AI interprets numbers — it never invents them.</div>",
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            "<div class='ds-card'><h4>🤖 Agentic pipeline</h4>"
+            "Intent parsing, live data, ratio engine, annual-report retrieval, "
+            "an AI forecaster and an AI critic — orchestrated with LangGraph.</div>",
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            "<div class='ds-card'><h4>🔍 Transparent output</h4>"
+            "Reasoning chain, confidence level, data timestamp, and a full "
+            "agent trace on every single answer.</div>",
+            unsafe_allow_html=True,
+        )
+
+
 def render(state: dict) -> None:
     intent = state.get("intent")
 
@@ -266,44 +487,36 @@ def render(state: dict) -> None:
         return
 
     # Forecast / dividend_qa result.
-    st.header(f"📈 {state.get('ticker')}")
+    render_company_header(state)
     render_direct_answer(state["forecast"])
     render_forecast_card(state["forecast"])
-    render_metrics(state.get("metrics") or {})
-    render_chart(state.get("raw_data"))
+
+    st.divider()
+    left, right = st.columns([1, 1.2])
+    with left:
+        st.subheader("📊 Key metrics")
+        render_metrics(state.get("metrics") or {})
+    with right:
+        st.subheader("📉 Dividend history (last 10 FYs)")
+        render_chart(state.get("raw_data"))
+
+    render_corporate_actions(state.get("ticker") or "")
+    render_agent_trace(state)
+
     if state.get("data_timestamp"):
         st.caption(f"Data as of {state['data_timestamp']}")
     if state.get("errors"):  # e.g. critic failed but a forecast exists
         st.caption("⚠️ Validation was incomplete: " + "; ".join(state["errors"]))
-    render_agent_trace(state)
 
 
 # ── page body ────────────────────────────────────────────────────────
 def main() -> None:
-    st.title("📈 DiviSense AI")
-    st.markdown("_Agentic dividend forecasting for NSE-listed Indian companies._")
-    st.warning(config.DISCLAIMER)
-
-    with st.form("query_form"):
-        query_input = st.text_input(
-            "Ask DiviSense",
-            placeholder="Enter a ticker or ask a question…",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Analyze dividend →", type="primary")
-
-    st.caption("Or try an example:")
-    chip_cols = st.columns(len(EXAMPLES))
-    for col, example in zip(chip_cols, EXAMPLES):
-        if col.button(example, width="stretch"):
-            st.session_state["pending_query"] = example
-
-    if submitted and query_input.strip():
-        st.session_state["pending_query"] = query_input.strip()
+    render_sidebar()
 
     pending = st.session_state.get("pending_query")
     if not pending:
-        st.info("👆 Enter a ticker (e.g. `ITC`) or ask a dividend question to begin.")
+        render_welcome()
+        st.warning(config.DISCLAIMER)
         return
 
     # Only re-run the pipeline when the query actually changes; otherwise
@@ -313,6 +526,7 @@ def main() -> None:
         st.session_state["result_query"] = pending
 
     render(st.session_state["result_state"])
+    st.warning(config.DISCLAIMER)
 
 
 main()

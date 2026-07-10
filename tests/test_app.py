@@ -138,6 +138,30 @@ def test_error_state_renders_error():
     assert any("Couldn't find market data" in e.value for e in at.error)
 
 
+# ── sidebar interaction contract ─────────────────────────────────────
+def test_example_click_fills_input_without_running():
+    at = AppTest.from_file("app.py", default_timeout=30).run()
+    example_btn = next(b for b in at.button if b.label == "COALINDIA")
+    example_btn.click().run()
+
+    assert at.session_state["query_box"] == "COALINDIA"          # box pre-filled
+    assert "pending_query" not in at.session_state               # pipeline NOT triggered
+    assert not at.exception
+
+
+def test_analyze_button_submits_filled_query():
+    at = AppTest.from_file("app.py", default_timeout=30)
+    at.run()
+    next(b for b in at.button if b.label == "COALINDIA").click().run()
+    analyze = next(b for b in at.button if "Analyze" in b.label)
+    with patch("src.graph.get_graph", return_value=_FakeGraph()):
+        analyze.click().run()
+
+    assert at.session_state["pending_query"] == "COALINDIA"
+    assert at.session_state["result_state"]["ticker"] == "ITC"  # from the fake graph
+    assert not at.exception
+
+
 # ── streamed execute() path with a mocked graph ──────────────────────
 class _FakeGraph:
     def stream(self, initial, stream_mode="updates"):
