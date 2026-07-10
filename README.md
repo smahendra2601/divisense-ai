@@ -186,19 +186,23 @@ pytest                            # include live integration tests (needs keys)
 
 ## Screenshots
 
-<!-- Add screenshots here before submission. Suggested captures:
+**Home — enter a ticker or ask a question (example chips pre-fill the box):**
 
-  1. Streamlit home — question box + example chips.
-  2. A forecast result — forecast card + confidence badge + metrics table + chart.
-  3. A direct-question result — the "likely yes/no" answer banner.
-  4. The expanded 🔍 Agent trace (intent → nodes → LLM-calls-used).
-  5. A backtest run in the terminal (hit/miss table).
+![Home](docs/screenshots/home.png)
 
-Place image files under docs/screenshots/ and reference them like:
+**Forecast result — amount range, expected window, confidence, reasoning and risks (`ITC`):**
+
 ![Forecast result](docs/screenshots/forecast.png)
--->
 
-_Screenshots to be added._
+**Direct question — the answer comes first, then the supporting forecast
+(*"Will Infosys increase its dividend next quarter?"*):**
+
+![Direct answer](docs/screenshots/direct-answer.png)
+
+**Agent trace — annual-report RAG snippets, recent-news context, and the Critic's
+verdict, attached to every answer:**
+
+![Agent trace](docs/screenshots/agent-trace.png)
 
 ---
 
