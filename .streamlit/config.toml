@@ -1,0 +1,22 @@
+# Professional black/graphite palette with a restrained gold accent,
+# pinned so the app looks the same regardless of the viewer's global
+# Streamlit theme. Surfaces are styled further in app.py's injected CSS.
+[theme]
+base = "dark"
+primaryColor = "#d9a441"
+backgroundColor = "#0e0f11"
+secondaryBackgroundColor = "#1a1c20"
+textColor = "#ececee"
+baseFontSize = 18
+font = "sans serif"
+
+# The sidebar is graphite (gradient in app.py); its widgets get their own
+# dark field palette so inputs never render white-on-white.
+[theme.sidebar]
+backgroundColor = "#0d0e10"
+secondaryBackgroundColor = "#1d1f23"
+textColor = "#ededf0"
+primaryColor = "#d9a441"
+
+[client]
+toolbarMode = "minimal"

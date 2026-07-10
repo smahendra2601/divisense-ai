@@ -32,50 +32,128 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* hide default chrome for a clean demo */
+    /* ── base chrome: clean, demo-ready ─────────────────────────── */
     #MainMenu, footer {visibility: hidden;}
+    [data-testid="stAppDeployButton"] {display: none !important;}  /* remove Deploy */
+    [data-testid="stDecoration"] {display: none;}                  /* top accent bar */
+    [data-testid="stHeader"] {background: transparent;}
+    [data-testid="stAppViewContainer"] {
+        background: radial-gradient(1100px 550px at 85% -10%, #1a1c20 0%, #0e0f11 50%, #0a0b0d 100%);
+    }
+    /* main panel fills the space left of the sidebar */
+    .block-container {
+        padding-top: 2rem; padding-bottom: 3rem;
+        padding-left: 3rem; padding-right: 3rem;
+        max-width: 100%;
+    }
 
-    /* navy sidebar */
+    /* typography */
+    h1, h2, h3 {letter-spacing: -0.4px;}
+    [data-testid="stMainBlockContainer"] h1 {font-size: 2.6rem; font-weight: 800;}
+    [data-testid="stMainBlockContainer"] h2 {font-weight: 750;}
+
+    /* ── graphite sidebar ───────────────────────────────────────── */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0a2b45 0%, #10395c 100%);
-        min-width: 340px;
+        background: linear-gradient(180deg, #0c0d0f 0%, #141619 100%);
+        min-width: 410px;
+        border-right: 1px solid rgba(255,255,255,0.08);
     }
     [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4,
     [data-testid="stSidebar"] p, [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] li, [data-testid="stSidebar"] summary {
-        color: #eef4fa !important;
+        color: #ededf0 !important;
     }
-    [data-testid="stSidebar"] hr {border-color: rgba(255,255,255,0.25);}
+    /* sidebar type matches the main panel body size (1rem = baseFontSize) */
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] li, [data-testid="stSidebar"] summary,
+    [data-testid="stSidebar"] button p {
+        font-size: 1rem;
+    }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        font-size: 0.9rem; color: #9aa0a8 !important;
+    }
+    [data-testid="stSidebar"] hr {border-color: rgba(255,255,255,0.14);}
+    /* question box: solid dark field + white text so typing is always
+       visible (semi-transparent backgrounds inherit the theme's white
+       widget background and go white-on-white) */
+    [data-testid="stSidebar"] [data-baseweb="textarea"] {
+        background: #1d1f23;
+        border: 1px solid rgba(255,255,255,0.22); border-radius: 10px;
+    }
+    [data-testid="stSidebar"] textarea {
+        background: #1d1f23 !important; color: #ffffff !important;
+        caret-color: #e6bc63; font-size: 1rem;
+    }
+    [data-testid="stSidebar"] textarea::placeholder {color: rgba(255,255,255,0.45);}
 
-    /* metric tiles as cards */
+    /* brand lockup — big logo + wordmark */
+    .ds-brand {display: flex; align-items: center; gap: 14px; margin: 2px 0 6px;}
+    .ds-brand-logo {
+        font-size: 2.9rem; line-height: 1;
+        filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35));
+    }
+    .ds-brand-name {
+        font-size: 2.05rem; font-weight: 800; letter-spacing: -0.6px;
+        color: #ffffff; line-height: 1.02;
+    }
+    .ds-brand-name span {
+        background: linear-gradient(90deg, #d9a441, #f0d08a);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .ds-brand-tag {font-size: 0.92rem; color: #a3a9b2 !important; margin-top: 3px;}
+
+    /* sidebar buttons */
+    [data-testid="stSidebar"] button[kind="primary"],
+    [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+        background: linear-gradient(90deg, #c9962f, #e6bc63);
+        border: none; border-radius: 10px; font-weight: 700;
+        box-shadow: 0 3px 12px rgba(201,150,47,0.35);
+        transition: transform .06s ease, box-shadow .2s ease;
+    }
+    [data-testid="stSidebar"] button[kind="primary"] p,
+    [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] p {
+        color: #17130a !important;   /* dark text on the gold CTA */
+    }
+    [data-testid="stSidebar"] button[kind="primary"]:hover,
+    [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
+        box-shadow: 0 5px 18px rgba(201,150,47,0.55); transform: translateY(-1px);
+    }
+    [data-testid="stSidebar"] button[kind="secondary"],
+    [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.14);
+        color: #e2e4e8; text-align: left; font-weight: 500;
+        white-space: normal; border-radius: 10px;
+    }
+    [data-testid="stSidebar"] button[kind="secondary"]:hover,
+    [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
+        background: rgba(255,255,255,0.10);
+        border-color: rgba(230,188,99,0.55); color: #ffffff;
+    }
+
+    /* ── main-panel surfaces ────────────────────────────────────── */
     [data-testid="stMetric"] {
-        border: 1px solid rgba(49,51,63,0.14);
-        border-radius: 12px;
-        padding: 14px 16px;
-        background: rgba(9,105,218,0.04);
-        box-shadow: 0 1px 3px rgba(16,24,40,0.06);
+        border: 1px solid rgba(255,255,255,0.09); border-radius: 14px;
+        padding: 16px 18px; background: #17181b;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
     }
+    [data-testid="stMetricValue"] {font-weight: 750;}
 
-    /* generic card */
     .ds-card {
-        border: 1px solid rgba(49,51,63,0.14);
-        border-radius: 12px;
-        padding: 16px 20px;
-        background: rgba(9,105,218,0.03);
-        box-shadow: 0 1px 3px rgba(16,24,40,0.06);
-        margin-bottom: 8px;
+        border: 1px solid rgba(255,255,255,0.09); border-radius: 14px;
+        padding: 16px 20px; background: #17181b;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35); margin-bottom: 8px;
     }
-    .ds-card h4 {margin: 0 0 8px 0;}
+    .ds-card h4 {margin: 0 0 8px 0; color: #eceef1;}
 
     /* direct-answer banner */
     .ds-answer {
-        border-left: 5px solid #0969da;
-        background: rgba(9,105,218,0.08);
-        padding: 16px 20px;
-        border-radius: 8px;
-        margin: 4px 0 14px 0;
-        font-size: 1.12rem;
+        border-left: 5px solid #d9a441;
+        background: linear-gradient(90deg, rgba(217,164,65,0.13), rgba(217,164,65,0.03));
+        padding: 16px 20px; border-radius: 10px;
+        margin: 4px 0 14px 0; font-size: 1.12rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
     }
 
     /* confidence badge */
@@ -86,10 +164,22 @@ st.markdown(
 
     /* intent chip in the header */
     .ds-chip {
-        background: rgba(9,105,218,0.12); color: #0a3d62;
-        padding: 2px 12px; border-radius: 12px; font-size: 0.8rem;
+        background: rgba(217,164,65,0.16); color: #e6c078;
+        padding: 2px 12px; border-radius: 12px; font-size: 0.85rem;
         font-weight: 600; display: inline-block; margin-left: 8px;
         vertical-align: middle;
+    }
+
+    /* expanders as clean cards — scoped to the MAIN panel only */
+    [data-testid="stMainBlockContainer"] [data-testid="stExpander"] {
+        border: 1px solid rgba(255,255,255,0.09); border-radius: 12px;
+        background: #17181b; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    /* sidebar expander ("How it works"): its own dark surface so the
+       light text reads crisply instead of washing out */
+    [data-testid="stSidebar"] [data-testid="stExpander"] {
+        border: 1px solid rgba(255,255,255,0.18); border-radius: 10px;
+        background: rgba(255,255,255,0.045);
     }
     </style>
     """,
@@ -113,7 +203,7 @@ NODE_STEPS = {
     "report_node": "📝 Composing the report…",
 }
 
-_CONF_COLORS = {"high": "#1a7f37", "medium": "#9a6700", "low": "#cf222e"}
+_CONF_COLORS = {"high": "#2da44e", "medium": "#bf8700", "low": "#e5534b"}  # bright enough for dark bg
 
 
 # ── small formatters ─────────────────────────────────────────────────
@@ -159,8 +249,14 @@ def _submit_query() -> None:
 
 def render_sidebar() -> None:
     with st.sidebar:
-        st.markdown("## 📈 DiviSense AI")
-        st.markdown("Agentic dividend forecasting for NSE-listed Indian companies.")
+        st.markdown(
+            "<div class='ds-brand'>"
+            "<div class='ds-brand-logo'>📈</div>"
+            "<div><div class='ds-brand-name'>DiviSense<span> AI</span></div>"
+            "<div class='ds-brand-tag'>Agentic dividend forecasting · NSE</div></div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
         st.divider()
 
         st.markdown("#### Ask DiviSense")
@@ -340,14 +436,16 @@ def render_chart(raw_data: dict | None) -> None:
         }
     )
     fig = px.bar(df, x="Fiscal Year", y="Dividend (₹/share)", text="Dividend (₹/share)")
-    fig.update_traces(marker_color="#0969da", textposition="outside")
+    fig.update_traces(marker_color="#d9a441", textposition="outside")
     fig.update_layout(
         height=360,
         margin=dict(l=10, r=10, t=10, b=10),
         yaxis_title="₹ / share",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
+        font_color="#d7dae0",
     )
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
