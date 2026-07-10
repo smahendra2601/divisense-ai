@@ -235,6 +235,7 @@ divisense-ai/
 | v1.2 | **Backtesting module** — hide latest dividend, measure forecast accuracy | New `backtest.py` reusing `graph.py` |
 | v1.3 | **Peer/sector comparison agent** | New node in `graph.py` |
 | v1.3 | **News & announcement sentiment agent** — _recent-news **context** already delivered in MVP (`news.py` + News Node, Tavily web search, deterministic/fail-soft). Remaining future work: LLM **sentiment scoring** of announcements and folding structured news facts into `corp_actions.py`._ | Extend the existing News Node; new sentiment step (weigh against the ≤3-call budget) |
+| v1.3 | **Cleaner news context** — the `year` window can surface low-signal hits (social posts, generic pages). Two levers: a deterministic **relevance-score floor** (zero cost) and/or an **LLM news-summarizer node** that distills raw snippets into one "recent developments" note before the Forecast Agent (+1 LLM call → raises the budget ceiling to 4). | Tune filtering inside `news.py`; optional new summarizer node in `graph.py` (weigh against the ≤3-call budget) |
 | v2.0 | **FastAPI backend + React frontend**; multi-user | Tier 4 swap; Tiers 1–3 untouched |
 | v2.0 | **PostgreSQL + persistent forecast history** | Replace ad-hoc state persistence in Report Node |
 | v2.0 | **Dockerize + deploy** (Railway/Render free tier) | Infra only |
