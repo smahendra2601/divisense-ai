@@ -14,6 +14,11 @@ __pycache__/
 .venv/
 venv/
 
+# Documents (keep binaries out of the repo)
+*.pdf
+*.ppt
+*.pptx
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
