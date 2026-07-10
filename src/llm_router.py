@@ -146,7 +146,12 @@ def _build_groq_client():
         raise LLMConfigError(
             "GROQ_API_KEY is not set. Copy .env.example to .env and fill it in."
         )
-    return ChatGroq(model=config.GROQ_MODEL, api_key=api_key, temperature=0.2)
+    return ChatGroq(
+        model=config.GROQ_MODEL,
+        api_key=api_key,
+        temperature=0.2,
+        timeout=config.LLM_TIMEOUT_SECONDS,
+    )
 
 
 def _build_gemini_client():
@@ -157,7 +162,12 @@ def _build_gemini_client():
         raise LLMConfigError(
             "GOOGLE_API_KEY is not set. Copy .env.example to .env and fill it in."
         )
-    return ChatGoogleGenerativeAI(model=config.GEMINI_MODEL, google_api_key=api_key, temperature=0.2)
+    return ChatGoogleGenerativeAI(
+        model=config.GEMINI_MODEL,
+        google_api_key=api_key,
+        temperature=0.2,
+        timeout=config.LLM_TIMEOUT_SECONDS,
+    )
 
 
 _CLIENT_BUILDERS = {"groq": _build_groq_client, "gemini": _build_gemini_client}
@@ -173,12 +183,31 @@ def _get_client(provider: str):
     return _clients[provider]
 
 
+def _extract_text(content) -> str:
+    """Normalize a chat response's content to plain text.
+
+    Newer Gemini models return a LIST of content blocks
+    (``[{"type": "text", "text": ...}, ...]``) instead of a string;
+    ``str()``-ing that would feed Python repr to the JSON parser.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text") or "")
+        return "".join(parts)
+    return str(content)
+
+
 def _call_provider(provider: str, prompt: str) -> str:
     """Invoke one provider's chat model and return its text content."""
     client = _get_client(provider)
     response = client.invoke(prompt)
-    content = getattr(response, "content", response)
-    return content if isinstance(content, str) else str(content)
+    return _extract_text(getattr(response, "content", response))
 
 
 # ── public entry points ────────────────────────────────────────────────

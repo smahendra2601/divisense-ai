@@ -135,6 +135,7 @@ def _agent_trace(state: dict) -> str:
         for issue in critique.get("issues") or []:
             lines.append(f"    - {issue}")
     lines.append(f"- **Forecast retries:** {state.get('retry_count', 0)}")
+    lines.append(f"- **LLM calls used:** {state.get('llm_calls', 0)} (budget: {config.MAX_LLM_CALLS_PER_QUERY})")
     return "\n".join(lines)
 
 
@@ -167,7 +168,9 @@ def _error_report(state: dict) -> str:
     errors = state.get("errors") or ["Something went wrong."]
     ticker = state.get("ticker")
     heading = f"## ⚠️ Couldn't complete the analysis{f' for {ticker}' if ticker else ''}\n\n"
-    body = "\n".join(f"- {e}" for e in errors)
+    # Keep the card readable: full provider payloads live in the logs.
+    trimmed = [e if len(e) <= 220 else e[:220] + "…" for e in errors]
+    body = "\n".join(f"- {e}" for e in trimmed)
     tip = (
         "\n\nPlease check the ticker/spelling and try again. If it's an LLM rate-limit, "
         "wait a moment — results are cached, so a retry is cheap."

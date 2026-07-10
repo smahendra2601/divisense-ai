@@ -15,10 +15,13 @@ partial-but-useful payload is always returned for a real ticker.
 from __future__ import annotations
 
 import math
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime, timedelta, timezone
 
 import yfinance as yf
 
+from . import config
 from .cache import disk_cached
 
 # India Standard Time — every timestamp we stamp is IST so the UI's
@@ -31,6 +34,10 @@ _ANNUAL_PERIODS = 4
 
 class InvalidTickerError(ValueError):
     """Raised when a symbol resolves to no usable market data on NSE."""
+
+
+class DataFetchTimeoutError(RuntimeError):
+    """Raised when Yahoo Finance doesn't answer within the configured window."""
 
 
 def _to_num(value) -> float | None:
@@ -142,28 +149,8 @@ def _company_meta(tk: "yf.Ticker") -> dict:
     return meta
 
 
-@disk_cached()
-def fetch_company_data(ticker: str) -> dict:
-    """Fetch and normalize all market data for one NSE ticker.
-
-    Appends ``.NS``, pulls dividend history, current price, and the last
-    four annual income statements, balance sheets, and cash-flow
-    statements. Result is JSON-serializable and cached on disk for one
-    hour (``config.CACHE_TTL_SECONDS``) keyed on the ticker.
-
-    Raises ``InvalidTickerError`` if the symbol yields no usable data
-    (bad ticker, delisted, or not on NSE).
-    """
-    if not ticker or not ticker.strip():
-        raise InvalidTickerError(
-            "No ticker provided. Pass an NSE symbol such as 'ITC' or 'INFY'."
-        )
-
-    base = ticker.strip().upper()
-    # Tolerate a user who already appended the suffix.
-    yf_symbol = base if base.endswith(".NS") else f"{base}.NS"
-    clean_ticker = yf_symbol[:-3]  # display ticker without ".NS"
-
+def _fetch_impl(ticker: str, yf_symbol: str, clean_ticker: str) -> dict:
+    """The actual yfinance work; runs inside the timeout harness below."""
     tk = yf.Ticker(yf_symbol)
 
     dividends = _dividends(tk)
@@ -202,6 +189,50 @@ def fetch_company_data(ticker: str) -> dict:
         "cash_flow": cash_flow,
         "data_timestamp": datetime.now(IST).isoformat(),
     }
+
+
+@disk_cached()
+def fetch_company_data(ticker: str) -> dict:
+    """Fetch and normalize all market data for one NSE ticker.
+
+    Appends ``.NS``, pulls dividend history, current price, and the last
+    four annual income statements, balance sheets, and cash-flow
+    statements. Result is JSON-serializable and cached on disk for one
+    hour (``config.CACHE_TTL_SECONDS``) keyed on the ticker.
+
+    The whole fetch runs under a wall-clock cap
+    (``config.YFINANCE_TIMEOUT_SECONDS``) so a hung Yahoo endpoint can
+    never stall the pipeline — ``DataFetchTimeoutError`` is raised
+    instead. Errors and timeouts are never cached; only successful
+    payloads are.
+
+    Raises ``InvalidTickerError`` if the symbol yields no usable data
+    (bad ticker, delisted, or not on NSE).
+    """
+    if not ticker or not ticker.strip():
+        raise InvalidTickerError(
+            "No ticker provided. Pass an NSE symbol such as 'ITC' or 'INFY'."
+        )
+
+    base = ticker.strip().upper()
+    # Tolerate a user who already appended the suffix.
+    yf_symbol = base if base.endswith(".NS") else f"{base}.NS"
+    clean_ticker = yf_symbol[:-3]  # display ticker without ".NS"
+
+    timeout = config.YFINANCE_TIMEOUT_SECONDS
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(_fetch_impl, ticker, yf_symbol, clean_ticker)
+        return future.result(timeout=timeout)
+    except FuturesTimeout:
+        raise DataFetchTimeoutError(
+            f"Fetching '{clean_ticker}' timed out after {timeout}s — Yahoo Finance "
+            "may be slow or unreachable. Please try again in a moment."
+        ) from None
+    finally:
+        # Don't block on a hung worker; yfinance's own socket timeouts will
+        # eventually reap it. cancel_futures is a no-op once it's running.
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 if __name__ == "__main__":

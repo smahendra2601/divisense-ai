@@ -200,4 +200,18 @@ def test_result_always_has_all_contract_keys(monkeypatch):
         "horizon",
         "company_mention",
         "message",
+        "llm_used",
     }
+
+
+def test_llm_used_flag_tracks_actual_llm_usage(monkeypatch):
+    # Bare ticker: no LLM spent.
+    calls = _mock_llm(monkeypatch, {})
+    assert intent.parse_query("ITC")["llm_used"] is False
+    assert calls == []
+    # LLM path: one call spent.
+    _mock_llm(
+        monkeypatch,
+        {"intent": "dividend_qa", "company_mention": "Infosys", "question": "q", "horizon": None},
+    )
+    assert intent.parse_query("Will Infosys raise its dividend?")["llm_used"] is True

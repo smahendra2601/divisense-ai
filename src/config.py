@@ -8,7 +8,11 @@ from pathlib import Path
 
 # ── LLM models ────────────────────────────────────────────────────────
 GROQ_MODEL = "llama-3.3-70b-versatile"   # primary: fast, short reasoning
-GEMINI_MODEL = "gemini-2.5-flash"        # fallback: large-context / 429s
+# Fallback: large-context / 429s. gemini-2.5-flash was retired by Google
+# (404 "no longer available", 2026-07); 3.x flash is 503-overloaded on the
+# free tier, so pin the lite tier which reliably answers. If this one ever
+# 404s, run `client.models.list()` and pick the current flash-class model.
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # ── Caching ───────────────────────────────────────────────────────────
 CACHE_TTL_SECONDS = 3600  # 1-hour disk-cache TTL for fetched market data
@@ -18,6 +22,11 @@ GROQ_RPM_LIMIT = 30
 GROQ_RPD_LIMIT = 14400
 GEMINI_RPM_LIMIT = 15
 GEMINI_RPD_LIMIT = 1500
+
+# ── External-call discipline (ARCHITECTURE.md §6) ─────────────────────
+LLM_TIMEOUT_SECONDS = 60       # per-request timeout for Groq/Gemini calls
+YFINANCE_TIMEOUT_SECONDS = 45  # wall-clock cap on one company's data fetch
+MAX_LLM_CALLS_PER_QUERY = 3    # hard budget: intent + forecast + critic
 
 # ── RAG (annual-report ingestion & retrieval) ────────────────────────
 RAG_CHUNK_SIZE = 800      # tokens per chunk

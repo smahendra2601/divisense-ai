@@ -231,6 +231,24 @@ def test_try_parse_json_returns_none_on_garbage():
     assert llm_router._try_parse_json("not json") is None
 
 
+# ── content normalization (Gemini block-list responses) ─────────────
+def test_extract_text_passes_through_plain_string():
+    assert llm_router._extract_text('{"a": 1}') == '{"a": 1}'
+
+
+def test_extract_text_joins_gemini_block_list():
+    blocks = [
+        {"type": "text", "text": '{"answer":', "extras": {"signature": "xyz"}},
+        {"type": "text", "text": " 4}"},
+    ]
+    assert llm_router._extract_text(blocks) == '{"answer": 4}'
+
+
+def test_extract_text_skips_non_text_blocks_and_handles_strings():
+    blocks = ["plain, ", {"type": "thinking", "thinking": "hidden"}, {"type": "text", "text": "visible"}]
+    assert llm_router._extract_text(blocks) == "plain, visible"
+
+
 # ── client config errors (no real keys needed to prove the guard fires) ─
 def test_missing_groq_key_raises_config_error(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)

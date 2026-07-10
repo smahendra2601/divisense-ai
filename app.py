@@ -89,7 +89,7 @@ def execute(query: str) -> dict:
     """Stream the LangGraph pipeline, showing per-node progress; return final state."""
     from src.graph import get_graph  # heavy imports deferred until a query runs
 
-    initial = {"user_query": query, "retry_count": 0, "errors": [], "rag_context": []}
+    initial = {"user_query": query, "retry_count": 0, "llm_calls": 0, "errors": [], "rag_context": []}
     state = dict(initial)
 
     with st.status("Running the DiviSense agent pipeline…", expanded=True) as status:

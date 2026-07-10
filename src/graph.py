@@ -29,7 +29,7 @@ from typing import Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from . import data_agent, intent, llm_router, ratio_engine, rag, report
+from . import config, data_agent, intent, llm_router, ratio_engine, rag, report
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class DivisenseState(TypedDict, total=False):
     forecast: Optional[dict]
     critique: Optional[dict]
     retry_count: int
+    llm_calls: int  # per-query budget counter (§6: ≤ MAX_LLM_CALLS_PER_QUERY)
     final_report: Optional[str]
     errors: list
     data_timestamp: Optional[str]
@@ -167,6 +168,8 @@ def intent_node(state: dict) -> dict:
         "ticker": parsed.get("ticker"),
         "question": parsed.get("question"),
         "horizon": parsed.get("horizon"),
+        # Bare-ticker short-circuits spend 0 LLM calls; everything else 1.
+        "llm_calls": (state.get("llm_calls") or 0) + (1 if parsed.get("llm_used") else 0),
     }
 
 
@@ -195,14 +198,15 @@ def rag_node(state: dict) -> dict:
 
 
 def forecast_node(state: dict) -> dict:
+    llm_calls = (state.get("llm_calls") or 0) + 1  # count the attempt either way
     try:
         forecast = llm_router.invoke_json(
             _forecast_prompt(state), _FORECAST_SCHEMA, task_type="reasoning"
         )
     except Exception as exc:  # noqa: BLE001
-        return _append_error(state, f"Forecast step failed: {exc}")
+        return {**_append_error(state, f"Forecast step failed: {exc}"), "llm_calls": llm_calls}
 
-    updates = {"forecast": forecast}
+    updates = {"forecast": forecast, "llm_calls": llm_calls}
     critique = state.get("critique")
     if critique and not critique.get("approved"):
         # We only reach here on a retry; count it so the critic loops at most once.
@@ -211,17 +215,33 @@ def forecast_node(state: dict) -> dict:
 
 
 def critic_node(state: dict) -> dict:
+    llm_calls = (state.get("llm_calls") or 0) + 1
     try:
         critique = llm_router.invoke_json(
             _critic_prompt(state), _CRITIC_SCHEMA, task_type="reasoning"
         )
     except Exception as exc:  # noqa: BLE001
-        return _append_error(state, f"Critic step failed: {exc}")
-    return {"critique": critique}
+        return {**_append_error(state, f"Critic step failed: {exc}"), "llm_calls": llm_calls}
+    return {"critique": critique, "llm_calls": llm_calls}
 
 
 def report_node(state: dict) -> dict:
-    return {"final_report": report.build_report(state)}
+    updates: dict = {}
+    critique = state.get("critique")
+    forecast = state.get("forecast")
+    # §3: if the critic's rejection stands (no budget left to retry, or the
+    # retry itself went unvalidated), flag low confidence rather than hide it.
+    if forecast and critique and critique.get("approved") is False:
+        forecast = {
+            **forecast,
+            "confidence": "low",
+            "risks": (forecast.get("risks") or [])
+            + ["Automated validation flagged unresolved issues — see the agent trace."],
+        }
+        state = {**state, "forecast": forecast}
+        updates["forecast"] = forecast
+    updates["final_report"] = report.build_report(state)
+    return updates
 
 
 # ── routers ──────────────────────────────────────────────────────────
@@ -238,14 +258,34 @@ def _error_or(next_node: str):
     return router
 
 
+def route_after_forecast(state: dict) -> str:
+    """Forecast → critic, unless errored or the LLM budget is spent.
+
+    A retried forecast that lands on the budget cap goes straight to the
+    report (unvalidated → report_node downgrades it to low confidence).
+    """
+    if state.get("errors"):
+        return "report_node"
+    if (state.get("llm_calls") or 0) >= config.MAX_LLM_CALLS_PER_QUERY:
+        return "report_node"
+    return "critic_node"
+
+
 def route_after_critic(state: dict) -> str:
     if state.get("errors"):
         return "report_node"
     critique = state.get("critique") or {}
     if critique.get("approved"):
         return "report_node"
-    if (state.get("retry_count") or 0) == 0:
-        return "forecast_node"  # loop back once with the critique injected
+    # Loop back once with the critique injected — but only if the retry
+    # fits inside the per-query LLM budget (§6: ≤3 calls). Question
+    # queries arrive here having already spent 3 (intent+forecast+critic),
+    # so they skip the retry and the report flags low confidence instead.
+    if (
+        (state.get("retry_count") or 0) == 0
+        and (state.get("llm_calls") or 0) < config.MAX_LLM_CALLS_PER_QUERY
+    ):
+        return "forecast_node"
     return "report_node"
 
 
@@ -279,7 +319,7 @@ def build_graph():
         {"forecast_node": "forecast_node", "report_node": "report_node"},
     )
     g.add_conditional_edges(
-        "forecast_node", _error_or("critic_node"),
+        "forecast_node", route_after_forecast,
         {"critic_node": "critic_node", "report_node": "report_node"},
     )
     g.add_conditional_edges(
@@ -307,6 +347,7 @@ def run_pipeline(user_query: str) -> dict:
     initial: dict = {
         "user_query": user_query,
         "retry_count": 0,
+        "llm_calls": 0,
         "errors": [],
         "rag_context": [],
     }

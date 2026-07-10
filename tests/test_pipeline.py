@@ -129,39 +129,83 @@ def test_dividend_qa_pipeline_with_banner(wire):
     assert "💬 Likely yes" in state["final_report"]
 
 
-# ── critic retry loop: reject once, then approve ─────────────────────
-def test_critic_retry_loop_runs_forecast_twice(wire):
+# ── critic retry loop under the ≤3-call budget (§6) ──────────────────
+def test_bare_ticker_rejection_retries_within_budget(wire):
+    """Bare ticker: forecast(1) + critic(2) reject → retry forecast(3).
+
+    The retry lands exactly on the budget cap, so the second critic pass
+    is skipped and the report downgrades confidence to low.
+    """
     llm = _ScriptedLLM(
-        critic_sequence=[
-            {"approved": False, "issues": ["amount range ignores CAGR"]},
-            {"approved": True, "issues": []},
-        ]
+        critic_sequence=[{"approved": False, "issues": ["amount range ignores CAGR"]}]
     )
     wire(llm)
 
     state = graph.run_pipeline("ITC")
 
-    assert llm.calls == {"intent": 0, "forecast": 2, "critic": 2}  # looped back exactly once
+    assert llm.calls == {"intent": 0, "forecast": 2, "critic": 1}
+    assert state["llm_calls"] == 3  # never exceeds the budget
     assert state["retry_count"] == 1
-    assert state["critique"]["approved"] is True
-
-
-def test_critic_rejects_twice_stops_after_one_retry(wire):
-    llm = _ScriptedLLM(
-        critic_sequence=[
-            {"approved": False, "issues": ["issue A"]},
-            {"approved": False, "issues": ["issue B"]},
-        ]
-    )
-    wire(llm)
-
-    state = graph.run_pipeline("ITC")
-
-    # Only ONE retry: forecast twice, critic twice, then report despite rejection.
-    assert llm.calls == {"intent": 0, "forecast": 2, "critic": 2}
-    assert state["retry_count"] == 1
+    # Unvalidated retry → rejection stands → confidence downgraded.
     assert state["critique"]["approved"] is False
-    assert state["final_report"]  # still produces a report
+    assert state["forecast"]["confidence"] == "low"
+    assert any("validation" in r.lower() for r in state["forecast"]["risks"])
+    assert state["final_report"]
+
+
+def test_question_rejection_cannot_retry_and_flags_low_confidence(wire):
+    """Question path: intent(1)+forecast(2)+critic(3) spends the whole budget.
+
+    A rejection therefore does NOT loop back — the report flags low
+    confidence instead, keeping the query at exactly 3 LLM calls.
+    """
+    llm = _ScriptedLLM(
+        intent_response={
+            "intent": "dividend_qa",
+            "company_mention": "Infosys",
+            "question": "Will Infosys increase its dividend?",
+            "horizon": None,
+        },
+        critic_sequence=[{"approved": False, "issues": ["contradicts trajectory"]}],
+    )
+    wire(llm)
+
+    state = graph.run_pipeline("Will Infosys increase its dividend?")
+
+    assert llm.calls == {"intent": 1, "forecast": 1, "critic": 1}  # no retry
+    assert state["llm_calls"] == 3
+    assert state["retry_count"] == 0
+    assert state["forecast"]["confidence"] == "low"
+    assert state["final_report"]
+
+
+@pytest.mark.parametrize(
+    "query,intent_resp,critic_seq",
+    [
+        ("ITC", None, [{"approved": True, "issues": []}]),
+        ("ITC", None, [{"approved": False, "issues": ["x"]}]),
+        (
+            "Will Infosys raise its dividend?",
+            {"intent": "dividend_qa", "company_mention": "Infosys", "question": "q", "horizon": None},
+            [{"approved": True, "issues": []}],
+        ),
+        (
+            "Will Infosys raise its dividend?",
+            {"intent": "dividend_qa", "company_mention": "Infosys", "question": "q", "horizon": None},
+            [{"approved": False, "issues": ["x"]}, {"approved": False, "issues": ["y"]}],
+        ),
+    ],
+)
+def test_llm_budget_never_exceeded(wire, query, intent_resp, critic_seq):
+    """§6 quota discipline: total LLM calls ≤ 3 in every scenario."""
+    llm = _ScriptedLLM(intent_response=intent_resp, critic_sequence=critic_seq)
+    wire(llm)
+
+    state = graph.run_pipeline(query)
+
+    total = sum(llm.calls.values())
+    assert total <= 3, f"budget exceeded: {llm.calls}"
+    assert state.get("llm_calls", 0) <= 3
 
 
 # ── routing: out_of_scope and clarify skip data/forecast ─────────────

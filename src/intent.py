@@ -64,8 +64,13 @@ def _result(
     horizon: str | None = None,
     company_mention: str | None = None,
     message: str | None = None,
+    llm_used: bool = False,
 ) -> dict:
-    """Build a parse result with every contract key always present."""
+    """Build a parse result with every contract key always present.
+
+    ``llm_used`` tells the caller whether this parse spent an LLM call —
+    the graph counts it against the per-query budget (§6: ≤3 calls).
+    """
     return {
         "intent": intent,
         "ticker": ticker,
@@ -73,6 +78,7 @@ def _result(
         "horizon": horizon,
         "company_mention": company_mention,
         "message": message,
+        "llm_used": llm_used,
     }
 
 
@@ -164,6 +170,7 @@ def parse_query(user_query: str) -> dict:
             question=query,
             message="Sorry, I couldn't parse that. Try a ticker like 'ITC' or a "
             "question like 'Will Infosys raise its dividend next year?'.",
+            llm_used=True,
         )
 
     intent = parsed.get("intent")
@@ -174,26 +181,26 @@ def parse_query(user_query: str) -> dict:
     if intent not in VALID_INTENTS:
         logger.warning("intent: LLM returned unknown intent %r; asking to clarify", intent)
         return _result("clarify", question=question, horizon=horizon,
-                       company_mention=mention, message=_GENERIC_CLARIFY_MSG)
+                       company_mention=mention, message=_GENERIC_CLARIFY_MSG, llm_used=True)
 
     if intent == "out_of_scope":
         return _result("out_of_scope", question=question, horizon=horizon,
-                       company_mention=mention, message=_OUT_OF_SCOPE_MSG)
+                       company_mention=mention, message=_OUT_OF_SCOPE_MSG, llm_used=True)
 
     if intent == "clarify":
         msg = _unresolved_msg(mention) if mention else _GENERIC_CLARIFY_MSG
         return _result("clarify", question=question, horizon=horizon,
-                       company_mention=mention, message=msg)
+                       company_mention=mention, message=msg, llm_used=True)
 
     # 3. forecast_single / dividend_qa — code makes the final ticker call.
     ticker = _confirm_ticker(mention)
     if not ticker:
         logger.info("intent: could not resolve company mention %r -> clarify", mention)
         return _result("clarify", question=question, horizon=horizon,
-                       company_mention=mention, message=_unresolved_msg(mention))
+                       company_mention=mention, message=_unresolved_msg(mention), llm_used=True)
 
     return _result(intent, ticker=ticker, question=question, horizon=horizon,
-                   company_mention=mention)
+                   company_mention=mention, llm_used=True)
 
 
 def _unresolved_msg(mention: str | None) -> str:
