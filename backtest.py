@@ -16,8 +16,9 @@ Honesty caveats, by design:
 - The **complete** FY is withheld (via ratio_engine's provisional-FY
   split), because scoring against a partially-collected year is
   meaningless.
-- **RAG is disabled** for the run: ingested annual reports post-date the
-  cutoff and literally state the withheld dividend, which would leak the
+- **RAG and news are both disabled** for the run: ingested annual reports
+  post-date the cutoff, and a live news search would likely surface the
+  actual dividend that was declared — either would leak the withheld
   answer into the forecast prompt.
 - ``current_price`` is today's, not the historical price at the cutoff —
   yield is slightly anachronistic, but the forecast anchors on dividend
@@ -70,17 +71,20 @@ def backtest_ticker(ticker: str) -> dict:
     """Run one withheld-year forecast for ``ticker`` and score it."""
     original_fetch = graph.data_agent.fetch_company_data
     original_retrieve = graph.rag.retrieve
+    original_news = graph.news.fetch_recent_news
 
     raw = original_fetch(ticker)
     redacted, withheld_fy, actual = withhold_latest_complete_fy(raw)
 
     graph.data_agent.fetch_company_data = lambda t, _r=redacted: _r
     graph.rag.retrieve = lambda *a, **k: []  # reports post-date the cutoff
+    graph.news.fetch_recent_news = lambda *a, **k: []  # news would leak the withheld actual
     try:
         state = graph.run_pipeline(ticker)
     finally:
         graph.data_agent.fetch_company_data = original_fetch
         graph.rag.retrieve = original_retrieve
+        graph.news.fetch_recent_news = original_news
 
     forecast = state.get("forecast") or {}
     rng = forecast.get("amount_range_inr") or {}
@@ -154,8 +158,8 @@ def print_results(results: list[dict]) -> None:
     if scored:
         print(f"\nHit rate: {hits}/{scored}")
     print(
-        "\nNote: RAG disabled (reports post-date the cutoff); price is current, "
-        "not historical. Not investment advice."
+        "\nNote: RAG and news disabled (would leak the withheld answer); price is "
+        "current, not historical. Not investment advice."
     )
 
 

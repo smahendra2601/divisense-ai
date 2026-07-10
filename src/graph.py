@@ -3,7 +3,7 @@
 Wires the whole pipeline (ARCHITECTURE.md §3):
 
     intent → [forecast_single | dividend_qa] → data → ratio → rag →
-    forecast → critic → report
+    news → forecast → critic → report
 
 Routing:
 - ``intent_node`` classifies the query; ``forecast_single`` /
@@ -29,7 +29,7 @@ from typing import Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from . import config, data_agent, intent, llm_router, ratio_engine, rag, report
+from . import config, data_agent, intent, llm_router, news, ratio_engine, rag, report
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ class DivisenseState(TypedDict, total=False):
     raw_data: Optional[dict]
     metrics: Optional[dict]
     rag_context: list
+    news_context: list
     forecast: Optional[dict]
     critique: Optional[dict]
     retry_count: int
@@ -84,6 +85,14 @@ def _forecast_prompt(state: dict) -> str:
     else:
         rag_text = "(No annual-report context available for this company.)"
 
+    news_context = state.get("news_context") or []
+    if news_context:
+        news_text = "\n\n".join(
+            f"[{n.get('title')}] {n.get('snippet')}" for n in news_context
+        )
+    else:
+        news_text = "(No recent news available for this company.)"
+
     ticker = state.get("ticker")
     horizon = state.get("horizon") or "the next fiscal year"
 
@@ -94,6 +103,11 @@ def _forecast_prompt(state: dict) -> str:
         "appear in these metrics — never invent, recall, or compute new figures.\n\n"
         f"METRICS (JSON):\n{metrics_json}\n\n"
         f"ANNUAL-REPORT CONTEXT (may be empty):\n{rag_text}\n\n"
+        f"RECENT NEWS (may be empty):\n{news_text}\n"
+        "News is QUALITATIVE CONTEXT ONLY — e.g. a rumored special dividend, a "
+        "regulatory or tax risk, an M&A event. NEVER use a rupee figure from a news "
+        "snippet as your forecast number; every number you cite must come from METRICS "
+        "above.\n\n"
         "INDIAN DIVIDEND CADENCE RULE: most NSE companies pay an INTERIM dividend "
         "(ex-date ~Oct–Mar) and a FINAL dividend after the March year-end "
         "(ex-date ~Jun–Aug) — NOT US-style quarterly dividends. If the user refers to "
@@ -199,6 +213,14 @@ def rag_node(state: dict) -> dict:
     return {"rag_context": rag.retrieve(state.get("ticker") or "")}
 
 
+def news_node(state: dict) -> dict:
+    # news.fetch_recent_news is fail-soft (returns []) — no API key, a
+    # network error, or a timeout all degrade silently. Zero LLM calls.
+    raw = state.get("raw_data") or {}
+    company_name = raw.get("company_name") or state.get("ticker") or ""
+    return {"news_context": news.fetch_recent_news(state.get("ticker") or "", company_name)}
+
+
 def forecast_node(state: dict) -> dict:
     llm_calls = (state.get("llm_calls") or 0) + 1  # count the attempt either way
     try:
@@ -300,6 +322,7 @@ def build_graph():
     g.add_node("data_node", data_node)
     g.add_node("ratio_node", ratio_node)
     g.add_node("rag_node", rag_node)
+    g.add_node("news_node", news_node)
     g.add_node("forecast_node", forecast_node)
     g.add_node("critic_node", critic_node)
     g.add_node("report_node", report_node)
@@ -317,7 +340,11 @@ def build_graph():
         {"rag_node": "rag_node", "report_node": "report_node"},
     )
     g.add_conditional_edges(
-        "rag_node", _error_or("forecast_node"),
+        "rag_node", _error_or("news_node"),
+        {"news_node": "news_node", "report_node": "report_node"},
+    )
+    g.add_conditional_edges(
+        "news_node", _error_or("forecast_node"),
         {"forecast_node": "forecast_node", "report_node": "report_node"},
     )
     g.add_conditional_edges(
@@ -352,6 +379,7 @@ def run_pipeline(user_query: str) -> dict:
         "llm_calls": 0,
         "errors": [],
         "rag_context": [],
+        "news_context": [],
     }
     return get_graph().invoke(initial)
 

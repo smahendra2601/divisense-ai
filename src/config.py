@@ -26,7 +26,17 @@ GEMINI_RPD_LIMIT = 1500
 # ── External-call discipline (ARCHITECTURE.md §6) ─────────────────────
 LLM_TIMEOUT_SECONDS = 60       # per-request timeout for Groq/Gemini calls
 YFINANCE_TIMEOUT_SECONDS = 45  # wall-clock cap on one company's data fetch
+NEWS_TIMEOUT_SECONDS = 20      # wall-clock cap on one news search
 MAX_LLM_CALLS_PER_QUERY = 3    # hard budget: intent + forecast + critic
+
+# ── News search (optional context source; requires TAVILY_API_KEY) ────
+TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+NEWS_CACHE_TTL_SECONDS = 3600      # news is time-sensitive; short TTL
+# Indian firms announce dividends ~2x/year (interim ~Feb, final ~May), so a
+# "month" window returns nothing for most of the year; "year" reliably catches
+# the last interim/final announcement. Tavily enum: day | week | month | year.
+NEWS_TIME_RANGE = "year"
+NEWS_MAX_RESULTS = 5
 
 # ── NSE symbol master (live ticker resolution) ────────────────────────
 NSE_SYMBOLS_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"

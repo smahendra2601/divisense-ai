@@ -56,17 +56,19 @@ def test_withhold_raises_when_nothing_would_remain():
         backtest.withhold_latest_complete_fy(_raw(only_one_fy))
 
 
-def _run_scored(monkeypatch, forecast_range, rag_calls=None):
+def _run_scored(monkeypatch, forecast_range, rag_calls=None, news_calls=None):
     monkeypatch.setattr(
         backtest.graph.data_agent, "fetch_company_data", lambda t: _raw(_COMPLETE_HISTORY)
     )
 
     def fake_pipeline(query):
-        # The redacted fetch and disabled RAG must be active *during* the run.
+        # The redacted fetch and disabled RAG/news must be active *during* the run.
         served = backtest.graph.data_agent.fetch_company_data("TEST")
         assert all(d["date"] < "2025" for d in served["dividends"])
         if rag_calls is not None:
             rag_calls.append(backtest.graph.rag.retrieve("TEST"))
+        if news_calls is not None:
+            news_calls.append(backtest.graph.news.fetch_recent_news("TEST"))
         return {
             "forecast": {"amount_range_inr": forecast_range, "confidence": "medium"},
             "retry_count": 0,
@@ -101,6 +103,17 @@ def test_rag_disabled_during_run_and_restored_after(monkeypatch):
     from src import rag as rag_module
 
     assert backtest.graph.rag.retrieve is rag_module.retrieve
+
+
+def test_news_disabled_during_run_and_restored_after(monkeypatch):
+    # News would leak the withheld actual (real-time search could surface
+    # the very dividend announcement being hidden) -- must be off mid-run.
+    news_calls: list = []
+    _run_scored(monkeypatch, {"low": 12.0, "high": 14.0}, news_calls=news_calls)
+    assert news_calls == [[]]  # fetch_recent_news() returned [] mid-run
+    from src import news as news_module
+
+    assert backtest.graph.news.fetch_recent_news is news_module.fetch_recent_news
 
 
 def test_fetch_restored_even_if_pipeline_raises(monkeypatch):

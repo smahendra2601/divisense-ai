@@ -107,6 +107,7 @@ NODE_STEPS = {
     "data_node": "📥 Fetching live market data (yfinance)…",
     "ratio_node": "🧮 Computing dividend metrics (deterministic)…",
     "rag_node": "📚 Retrieving annual-report context…",
+    "news_node": "📰 Checking recent news…",
     "forecast_node": "🔮 Forecasting the dividend…",
     "critic_node": "🔍 Validating every number against the metrics…",
     "report_node": "📝 Composing the report…",
@@ -207,7 +208,10 @@ def execute(query: str) -> dict:
     """Stream the LangGraph pipeline, showing per-node progress; return final state."""
     from src.graph import get_graph  # heavy imports deferred until a query runs
 
-    initial = {"user_query": query, "retry_count": 0, "llm_calls": 0, "errors": [], "rag_context": []}
+    initial = {
+        "user_query": query, "retry_count": 0, "llm_calls": 0,
+        "errors": [], "rag_context": [], "news_context": [],
+    }
     state = dict(initial)
 
     with st.status("Running the DiviSense agent pipeline…", expanded=True) as status:

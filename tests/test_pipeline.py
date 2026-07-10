@@ -75,13 +75,14 @@ class _ScriptedLLM:
 def wire(monkeypatch):
     """Return a helper that installs a scripted LLM + fakes and runs a query."""
 
-    def _install(llm, *, fetch=None, rag_hits=None):
+    def _install(llm, *, fetch=None, rag_hits=None, news_hits=None):
         monkeypatch.setattr(graph.llm_router, "invoke_json", llm)
         monkeypatch.setattr(intent, "_ticker_exists", lambda c: False)
         monkeypatch.setattr(
             graph.data_agent, "fetch_company_data", fetch or (lambda t: _fake_raw(t))
         )
         monkeypatch.setattr(graph.rag, "retrieve", lambda ticker, *a, **k: rag_hits or [])
+        monkeypatch.setattr(graph.news, "fetch_recent_news", lambda *a, **k: news_hits or [])
         # fresh compiled graph per test to avoid cross-test state
         monkeypatch.setattr(graph, "_graph", None)
 
@@ -272,6 +273,43 @@ def test_rag_snippets_appear_in_trace(wire):
     assert len(state["rag_context"]) == 1
     assert "1 annual-report snippet" in state["final_report"]
     assert "itc.pdf p12" in state["final_report"]
+
+
+# ── news context flows into the trace and the forecast prompt ────────
+def test_news_snippets_appear_in_trace_and_prompt(wire):
+    captured_prompts = []
+
+    def llm(prompt, schema_hint, task_type="reasoning"):
+        captured_prompts.append(prompt)
+        if "Critic Agent" in prompt:
+            return {"approved": True, "issues": []}
+        if "Forecast Agent" in prompt:
+            return dict(_FORECAST)
+        raise AssertionError("unexpected prompt")
+
+    wire(
+        llm,
+        news_hits=[{"title": "ITC declares interim dividend", "url": "https://x", "snippet": "...", "score": 0.9}],
+    )
+
+    state = graph.run_pipeline("ITC")
+
+    assert len(state["news_context"]) == 1
+    assert "1 article(s)" in state["final_report"]
+    assert "ITC declares interim dividend" in state["final_report"]
+    # and the forecast prompt itself carried the news + the numbers-only guard
+    assert any("ITC declares interim dividend" in p for p in captured_prompts)
+    assert any("NEVER use a rupee figure from a news snippet" in p for p in captured_prompts)
+
+
+def test_no_news_shows_zero_articles_in_trace(wire):
+    llm = _ScriptedLLM()
+    wire(llm)  # news_hits defaults to None -> []
+
+    state = graph.run_pipeline("ITC")
+
+    assert state["news_context"] == []
+    assert "0 article(s)" in state["final_report"]
 
 
 # ── smoke tests: the five scenarios exercised live against real

@@ -55,6 +55,7 @@ def _forecast_state(**over):
         },
         "critique": {"approved": True, "issues": []},
         "rag_context": [],
+        "news_context": [],
         "retry_count": 0,
         "raw_data": _RAW,
         "data_timestamp": "2026-07-09T12:00:00+05:30",
@@ -204,6 +205,7 @@ class _FakeGraph:
         yield {"data_node": {"raw_data": _RAW, "data_timestamp": "2026-07-09T12:00:00+05:30"}}
         yield {"ratio_node": {"metrics": _METRICS}}
         yield {"rag_node": {"rag_context": []}}
+        yield {"news_node": {"news_context": []}}
         yield {"forecast_node": {"forecast": _forecast_state()["forecast"]}}
         yield {"critic_node": {"critique": {"approved": True, "issues": []}}}
         yield {"report_node": {"final_report": "ok"}}

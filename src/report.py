@@ -115,6 +115,7 @@ def _corporate_actions_table(ticker: str) -> str:
 def _agent_trace(state: dict) -> str:
     metrics = state.get("metrics") or {}
     rag = state.get("rag_context") or []
+    news_items = state.get("news_context") or []
     critique = state.get("critique") or {}
 
     lines = ["## 🔍 Agent trace", ""]
@@ -129,6 +130,10 @@ def _agent_trace(state: dict) -> str:
     if rag:
         for s in rag:
             lines.append(f"    - {s.get('source_file')} p{s.get('page')} (score {_fmt_num(s.get('score'))})")
+    lines.append(f"- **News context:** {len(news_items)} article(s)")
+    if news_items:
+        for n in news_items:
+            lines.append(f"    - {n.get('title')} ({n.get('url')})")
     if critique:
         verdict = "approved ✅" if critique.get("approved") else "rejected ❌"
         lines.append(f"- **Critic:** {verdict}")
