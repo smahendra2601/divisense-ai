@@ -118,6 +118,29 @@ def test_ingest_pdf_builds_ids_metadata_and_upserts(monkeypatch, tmp_path, fake_
     ]
 
 
+def test_ingest_all_maps_filenames_and_survives_failures(monkeypatch, tmp_path, fake_model):
+    (tmp_path / "ITC_FY2025.pdf").write_bytes(b"%PDF-1.4 fake")
+    (tmp_path / "COALINDIA_FY2025.pdf").write_bytes(b"%PDF-1.4 fake")
+    (tmp_path / "BROKEN_FY2025.pdf").write_bytes(b"%PDF-1.4 fake")
+    (tmp_path / "notes.txt").write_text("not a pdf")  # must be ignored
+
+    seen = []
+
+    def fake_ingest(ticker, path):
+        seen.append(ticker)
+        if ticker == "BROKEN":
+            raise RuntimeError("corrupt file")
+        return 7
+
+    monkeypatch.setattr(pdf_ingest, "ingest_pdf", fake_ingest)
+    results = pdf_ingest.ingest_all(reports_dir=tmp_path)
+
+    assert sorted(seen) == ["BROKEN", "COALINDIA", "ITC"]
+    assert results["ITC_FY2025.pdf"] == 7
+    assert results["COALINDIA_FY2025.pdf"] == 7
+    assert results["BROKEN_FY2025.pdf"] == 0  # failure logged, batch continued
+
+
 def test_ingest_pdf_returns_zero_when_no_text(monkeypatch, tmp_path, fake_model):
     pdf_path = tmp_path / "scanned.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")

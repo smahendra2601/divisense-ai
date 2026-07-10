@@ -48,10 +48,27 @@ python forecast.py ITC
 
 ## One-time RAG ingestion (optional)
 
-Place annual report PDFs in `data/annual_reports/`, then:
+The pipeline works without RAG, but ingested annual reports give the
+forecaster qualitative context (dividend policy, capital allocation).
+
+Place annual report PDFs in `data/annual_reports/`, named
+`<TICKER>_<anything>.pdf` (e.g. `ITC_FY2025.pdf`), then ingest them all:
 
 ```powershell
-python src/pdf_ingest.py
+python -m src.pdf_ingest --all              # every PDF in the folder
+python -m src.pdf_ingest ITC data\annual_reports\ITC_FY2025.pdf   # one file
+```
+
+Where to get the PDFs: each company's investor-relations page, or NSE's
+public filings API — after visiting nseindia.com once for cookies,
+`https://www.nseindia.com/api/annual-reports?index=equities&symbol=<TICKER>`
+returns JSON with direct `nsearchives.nseindia.com` PDF links. Re-running
+ingestion on the same file updates it in place (no duplicates).
+
+Verify what a ticker's index returns:
+
+```powershell
+python -m src.rag ITC "dividend policy"
 ```
 
 ## Tests

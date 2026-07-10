@@ -17,7 +17,12 @@ formatting and case rather than being detokenized.
 
 Usage::
 
-    python -m src.pdf_ingest <TICKER> <pdf_path>
+    python -m src.pdf_ingest <TICKER> <pdf_path>   # one file
+    python -m src.pdf_ingest --all                 # every PDF in data/annual_reports/
+
+Batch mode expects files named ``<TICKER>_<anything>.pdf`` (e.g.
+``ITC_FY2025.pdf``) inside ``data/annual_reports/`` — the ticker is taken
+from the part before the first underscore.
 
 Note: all-MiniLM-L6-v2 embeds at most its first ~256 tokens per chunk,
 so with the default 800-token chunk size the tail of a very dense page
@@ -160,6 +165,32 @@ def ingest_pdf(ticker: str, pdf_path: str) -> int:
     return len(ids)
 
 
+def ingest_all(reports_dir=None) -> dict[str, int]:
+    """Ingest every ``<TICKER>_*.pdf`` in the annual-reports folder.
+
+    Returns ``{filename: chunk_count}``; a failed file is logged and
+    counted as 0 so one bad PDF never aborts the batch.
+    """
+    import glob
+
+    reports_dir = str(reports_dir or config.ANNUAL_REPORTS_DIR)
+    results: dict[str, int] = {}
+    pdfs = sorted(glob.glob(os.path.join(reports_dir, "*.pdf")))
+    if not pdfs:
+        logger.warning("pdf_ingest: no PDFs found in %s", reports_dir)
+        return results
+
+    for path in pdfs:
+        name = os.path.basename(path)
+        ticker = name.split("_")[0].split(".")[0].upper()
+        try:
+            results[name] = ingest_pdf(ticker, path)
+        except Exception as exc:  # noqa: BLE001 - keep the batch going
+            logger.error("pdf_ingest: failed on %s (%s)", name, exc)
+            results[name] = 0
+    return results
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     try:
@@ -167,9 +198,21 @@ if __name__ == "__main__":
     except (AttributeError, ValueError):
         pass
 
+    if len(sys.argv) == 2 and sys.argv[1] == "--all":
+        summary = ingest_all()
+        if not summary:
+            print(f"⚠️  No PDFs found in {config.ANNUAL_REPORTS_DIR}.")
+            sys.exit(1)
+        print("\n=== Batch ingest summary ===")
+        for name, count in summary.items():
+            marker = "✅" if count else "⚠️ "
+            print(f"{marker} {name}: {count} chunk(s)")
+        sys.exit(0)
+
     if len(sys.argv) != 3:
         print("Usage: python -m src.pdf_ingest <TICKER> <pdf_path>")
-        print("Example: python -m src.pdf_ingest ITC data/annual_reports/itc_ar2025.pdf")
+        print("       python -m src.pdf_ingest --all")
+        print("Example: python -m src.pdf_ingest ITC data/annual_reports/ITC_FY2025.pdf")
         sys.exit(1)
 
     ticker_arg, pdf_arg = sys.argv[1], sys.argv[2]
