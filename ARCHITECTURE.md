@@ -8,7 +8,7 @@
 
 ## 1. Project Overview
 
-**DiviSense AI** is an agentic dividend forecasting platform for the **Indian stock market (NSE-listed companies)**. It is a **single-company tool**: given a ticker or a natural-language question about one company, it fetches live public data (dividend history, financial statements), computes fundamental ratios deterministically, retrieves qualitative context from annual reports via RAG, and uses a multi-agent LLM workflow (LangGraph) to produce a dividend forecast or a direct answer — always with transparent reasoning and a confidence level.
+**DiviSense AI** is an agentic dividend forecasting platform for the **Indian stock market (NSE-listed companies)**. It is a **single-company tool**: given a ticker or a natural-language question about one company, it fetches live public data (dividend history, financial statements), computes fundamental ratios deterministically, retrieves qualitative context from annual reports via RAG and recent dividend-relevant news via a web-search source, and uses a multi-agent LLM workflow (LangGraph) to produce a dividend forecast or a direct answer — always with transparent reasoning and a confidence level.
 
 **Supported query types (intents):**
 | Intent | Example inputs | Output |
@@ -46,7 +46,7 @@
 │  [Intent Agent: query → intent, ticker, question, horizon]     │
 │         │                                                      │
 │         ▼                                                      │
-│  [Data Node] → [Ratio Node] → [RAG Node] →                     │
+│  [Data Node] → [Ratio Node] → [RAG Node] → [News Node] →       │
 │  [Forecast Agent (question-aware)] → [Critic Agent]            │
 │         → [Report Node]                                        │
 │  (Critic can loop back to Forecast once on failure;            │
@@ -57,11 +57,11 @@
 │ TIER 2:       │   │ TIER 2:       │   │ TIER 2:                │
 │ INTELLIGENCE  │   │ KNOWLEDGE     │   │ LLM SERVICE            │
 │ ratio_engine  │   │ ChromaDB +    │   │ llm_router.py          │
-│ (pure pandas, │   │ local         │   │ Groq (fast, primary)   │
-│ deterministic)│   │ embeddings    │   │ Gemini (large-context  │
-│               │   │ (annual rpts) │   │ fallback)              │
-│               │   │               │   │ + quota tracker        │
-│               │   │               │   │ + response cache       │
+│ (pure pandas, │   │ local embeds  │   │ Groq (fast, primary)   │
+│ deterministic)│   │ (annual rpts) │   │ Gemini (large-context  │
+│               │   │ + news.py     │   │ fallback)              │
+│               │   │ (Tavily web   │   │ + quota tracker        │
+│               │   │ search)       │   │ + response cache       │
 └───────┬───────┘   └───────┬───────┘   └────────────────────────┘
         │                   │
 ┌───────▼───────────────────▼────────────────────────────────────┐
@@ -96,10 +96,11 @@
 |---|---|---|
 | `ratio_engine.py` | Pure pandas computation: payout ratio (5yr), dividend CAGR, FCF/dividend coverage, consecutive-increase streak, current yield, debt/equity trend, dividend consistency score, **recent dividend trajectory (last 4 payouts: rising/flat/falling)** — the trajectory feature directly powers "will it increase?" answers. Returns structured `metrics` dict. | **NO LLM involvement.** All financial numbers are computed in code. |
 | `rag.py` | Query Chroma for dividend-policy / capital-allocation snippets for the ticker. Local embedding model (`sentence-transformers/all-MiniLM-L6-v2`) — zero API cost. | If no documents exist for a ticker, return empty context gracefully (pipeline must still work). |
+| `news.py` | Fetch recent dividend-relevant news snippets via the Tavily web-search API (`fetch_recent_news(ticker, company_name)`) — special-dividend rumors, board announcements, regulatory/tax risk that a once-a-year annual report can't see. Deterministic retrieval (fixed query `"{company} dividend announcement"`, `topic=general`, `time_range=year`); **zero LLM calls**; stdlib `urllib` (no new dep); 1-hour disk cache. | **Optional context source, fail-soft like `rag.py`:** no `TAVILY_API_KEY`, a network error, or a timeout all degrade to `[]`, never raising. Snippets are **qualitative context only — never a source of numbers** (see Tier 3 node 3b). |
 | `llm_router.py` | Single `invoke(prompt, task_type)` entry point + `invoke_json(prompt, schema_hint)`. Routes: short reasoning → Groq (`llama-3.3-70b-versatile`); long-context → Gemini Flash. Tracks per-provider RPM/RPD counters; auto-fallback on 429; caches identical prompts. | Free tiers: Groq ≈ 30 RPM / low TPM; Gemini Flash ≈ 1,500 req/day. Both exhaust fast — cache aggressively. |
 
 ### Tier 3 — Agentic Orchestration (LangGraph)
-State object (`DivisenseState`, TypedDict): `user_query`, `intent`, `ticker`, `question`, `horizon`, `raw_data`, `metrics`, `rag_context`, `forecast`, `critique`, `retry_count`, `final_report`, `errors`, `data_timestamp`.
+State object (`DivisenseState`, TypedDict): `user_query`, `intent`, `ticker`, `question`, `horizon`, `raw_data`, `metrics`, `rag_context`, `news_context`, `forecast`, `critique`, `retry_count`, `final_report`, `errors`, `data_timestamp`.
 
 Nodes:
 0. **Intent Agent** — parses the raw user query into structured JSON:
@@ -110,7 +111,8 @@ Nodes:
 1. **Data Node** — calls `data_agent` (+cache). On failure → error path to Report Node.
 2. **Ratio Node** — calls `ratio_engine`.
 3. **RAG Node** — calls `rag.retrieve(ticker)`.
-4. **Forecast Agent (LLM, question-aware)** — receives `metrics` as JSON + RAG snippets + (for `dividend_qa`) the user's exact question. Output JSON:
+3b. **News Node** — calls `news.fetch_recent_news(ticker, company_name)`. Deterministic retrieval, **no LLM call**; fails soft to `[]` (missing key / network error / timeout). The snippets are passed to the Forecast Agent as **qualitative context only — never a source of numbers**; the prompt says so explicitly and the Critic's number-tracing rule (node 5) enforces it. **Disabled during backtests** (`backtest.py`) — a live search would surface the very dividend being withheld.
+4. **Forecast Agent (LLM, question-aware)** — receives `metrics` as JSON + RAG snippets + recent-news snippets + (for `dividend_qa`) the user's exact question. Output JSON:
    `{direct_answer?, likelihood?: "likely"|"unlikely"|"unclear", amount_range_inr, expected_window, confidence: high|medium|low, reasoning: [...], risks: [...]}`.
    - For `forecast_single`: forecast the **next fiscal year's total dividend per share** (range), plus likely interim/final split and timing window.
    - For `dividend_qa`: answer the question **first and directly** (e.g. "Likely yes — increase probability: medium"), then support it with the forecast.
@@ -173,7 +175,7 @@ divisense-ai/
 ├── CLAUDE.md                # Claude Code project context
 ├── README.md
 ├── requirements.txt
-├── .env.example             # GROQ_API_KEY=, GOOGLE_API_KEY=
+├── .env.example             # GROQ_API_KEY=, GOOGLE_API_KEY=, TAVILY_API_KEY= (optional)
 ├── app.py                   # Streamlit UI (Tier 4)
 ├── forecast.py              # CLI entry point (free-text or ticker)
 ├── src/
@@ -185,6 +187,7 @@ divisense-ai/
 │   ├── pdf_ingest.py        # Tier 1 (one-time script)
 │   ├── ratio_engine.py      # Tier 2
 │   ├── rag.py               # Tier 2
+│   ├── news.py              # Tier 2 (recent news via Tavily; fail-soft)
 │   ├── llm_router.py        # Tier 2
 │   ├── intent.py            # Tier 3 (Intent Agent prompt + parsing)
 │   ├── graph.py             # Tier 3 (LangGraph)
@@ -197,6 +200,7 @@ divisense-ai/
 └── tests/
     ├── test_ratio_engine.py # validate vs known ITC/COALINDIA numbers
     ├── test_intent.py       # intent parsing across query phrasings
+    ├── test_news.py         # news fail-soft contract (network mocked)
     └── test_pipeline.py     # end-to-end smoke test (LLM mocked)
 ```
 
@@ -213,6 +217,10 @@ divisense-ai/
 5. **Transparency** — reasoning chain, timestamps, confidence, disclaimer on every output.
 6. **Quota discipline** — ≤3 LLM calls per query; cache everything; bare tickers bypass the intent LLM.
 
+**Agentic communication.** Agents (LangGraph nodes) communicate through the shared typed `DivisenseState` passed node-to-node — *not* via MCP. External services (yfinance, Chroma, Tavily, Groq/Gemini) are reached through direct client libraries / stdlib HTTP behind their own interfaces. This is a single-process local app, so MCP tool-servers would add infrastructure the "local laptop, no infra" constraint rules out. **MCP is a clean future swap** (Tavily and several data providers ship MCP servers) if DiviSense ever grows into a multi-client or hosted service — it would slot in behind the existing source interfaces without touching the agents.
+
+**Deterministic retrieval, agentic interpretation.** New context sources like `news.py` follow principle #1: the *retrieval* is deterministic plumbing (fixed query, no LLM), while the *judgment* — deciding what a special-dividend rumor means for the forecast — is the Forecast Agent's job, checked by the Critic. Retrieval never spends an LLM call and never influences ticker resolution or the computed numbers.
+
 ---
 
 ## 7. Enhancement Roadmap (post-MVP — architecture already accommodates these)
@@ -226,7 +234,7 @@ divisense-ai/
 | v1.2 | **Scheduled watchlist monitoring + alerts** (APScheduler → email/Telegram) | New `scheduler.py` calling the existing pipeline |
 | v1.2 | **Backtesting module** — hide latest dividend, measure forecast accuracy | New `backtest.py` reusing `graph.py` |
 | v1.3 | **Peer/sector comparison agent** | New node in `graph.py` |
-| v1.3 | **News & announcement sentiment agent** | New RAG collection + node |
+| v1.3 | **News & announcement sentiment agent** — _recent-news **context** already delivered in MVP (`news.py` + News Node, Tavily web search, deterministic/fail-soft). Remaining future work: LLM **sentiment scoring** of announcements and folding structured news facts into `corp_actions.py`._ | Extend the existing News Node; new sentiment step (weigh against the ≤3-call budget) |
 | v2.0 | **FastAPI backend + React frontend**; multi-user | Tier 4 swap; Tiers 1–3 untouched |
 | v2.0 | **PostgreSQL + persistent forecast history** | Replace ad-hoc state persistence in Report Node |
 | v2.0 | **Dockerize + deploy** (Railway/Render free tier) | Infra only |
@@ -235,4 +243,4 @@ divisense-ai/
 
 ---
 
-*Last updated: July 2026. Treat §2–§6 as binding; §7 as the open runway.*
+*Last updated: 2026-07-10. Treat §2–§6 as binding; §7 as the open runway.*
