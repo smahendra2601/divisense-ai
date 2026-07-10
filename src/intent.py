@@ -65,11 +65,14 @@ def _result(
     company_mention: str | None = None,
     message: str | None = None,
     llm_used: bool = False,
+    suggestions: list | None = None,
 ) -> dict:
     """Build a parse result with every contract key always present.
 
     ``llm_used`` tells the caller whether this parse spent an LLM call —
     the graph counts it against the per-query budget (§6: ≤3 calls).
+    ``suggestions`` carries "did you mean?" ticker candidates
+    (``{ticker, company_name, score}``) for the clarify path.
     """
     return {
         "intent": intent,
@@ -79,6 +82,7 @@ def _result(
         "company_mention": company_mention,
         "message": message,
         "llm_used": llm_used,
+        "suggestions": suggestions or [],
     }
 
 
@@ -115,6 +119,11 @@ def _confirm_ticker(text: str | None) -> str | None:
     if resolved:
         return resolved
 
+    # The yfinance existence probe is a slow last resort: only useful when
+    # the authoritative NSE master couldn't be loaded (resolve() already
+    # checked membership when it is available).
+    if ticker_map.master_available():
+        return None
     candidate = re.sub(r"[^A-Za-z0-9&.\-]", "", text).upper()
     if candidate and _TICKER_SHAPE_RE.match(candidate) and _ticker_exists(candidate):
         return candidate
@@ -128,7 +137,9 @@ def _classify_with_llm(user_query: str) -> dict:
         "for a SINGLE Indian (NSE-listed) company at a time.\n\n"
         "Classify the user's query into exactly one intent:\n"
         '- "forecast_single": wants a dividend forecast for ONE specific company '
-        '(e.g. "Forecast ITC\'s dividend for next year", "Reliance dividend outlook").\n'
+        '(e.g. "Forecast ITC\'s dividend for next year", "Reliance dividend outlook"). '
+        "A bare company name or ticker on its own (e.g. \"Canara Bank\") also means "
+        "forecast_single — the user wants that company's dividend forecast.\n"
         '- "dividend_qa": asks a specific question about ONE company\'s dividend '
         '(e.g. "Will Infosys increase its dividend next quarter?", "Is HCL\'s dividend safe?").\n'
         '- "out_of_scope": about MULTIPLE companies, a screener/ranking '
@@ -158,6 +169,18 @@ def parse_query(user_query: str) -> dict:
         if ticker:
             logger.info("intent: bare-ticker short-circuit %r -> %s", query, ticker)
             return _result("forecast_single", ticker=ticker, company_mention=query)
+        # A single unresolved token may still be a partial company name
+        # ("Canara"): fuzzy-match against the NSE master. A clear winner
+        # auto-runs; candidates become a clarify with suggestions — both
+        # WITHOUT spending an LLM call.
+        auto, suggestions = ticker_map.resolve_with_suggestions(query)
+        if auto:
+            logger.info("intent: bare-token fuzzy auto-accept %r -> %s", query, auto)
+            return _result("forecast_single", ticker=auto, company_mention=query)
+        if suggestions:
+            return _result("clarify", company_mention=query,
+                           message=_suggestion_msg(query, suggestions),
+                           suggestions=suggestions)
         # Not a valid ticker; fall through to the LLM.
 
     # 2. LLM classification.
@@ -188,6 +211,23 @@ def parse_query(user_query: str) -> dict:
                        company_mention=mention, message=_OUT_OF_SCOPE_MSG, llm_used=True)
 
     if intent == "clarify":
+        # Even when the model punts to clarify, it may have extracted a
+        # usable company mention (e.g. the query was just a company name).
+        # Resolution is code's job — run the same ladder before giving up.
+        if mention:
+            resolved = _confirm_ticker(mention)
+            suggestions: list = []
+            if not resolved:
+                resolved, suggestions = ticker_map.resolve_with_suggestions(mention)
+            if resolved:
+                logger.info("intent: clarify-with-mention resolved %r -> %s", mention, resolved)
+                return _result("forecast_single", ticker=resolved, question=question,
+                               horizon=horizon, company_mention=mention, llm_used=True)
+            if suggestions:
+                return _result("clarify", question=question, horizon=horizon,
+                               company_mention=mention, llm_used=True,
+                               message=_suggestion_msg(mention, suggestions),
+                               suggestions=suggestions)
         msg = _unresolved_msg(mention) if mention else _GENERIC_CLARIFY_MSG
         return _result("clarify", question=question, horizon=horizon,
                        company_mention=mention, message=msg, llm_used=True)
@@ -195,6 +235,20 @@ def parse_query(user_query: str) -> dict:
     # 3. forecast_single / dividend_qa — code makes the final ticker call.
     ticker = _confirm_ticker(mention)
     if not ticker:
+        # Fuzzy-match the mention against the official NSE register: a
+        # high-confidence unique winner is auto-accepted; otherwise the
+        # candidates become "did you mean?" suggestions.
+        auto, suggestions = ticker_map.resolve_with_suggestions(mention or "")
+        if auto:
+            logger.info("intent: fuzzy auto-accept %r -> %s", mention, auto)
+            return _result(intent, ticker=auto, question=question, horizon=horizon,
+                           company_mention=mention, llm_used=True)
+        if suggestions:
+            logger.info("intent: %r ambiguous -> %d suggestion(s)", mention, len(suggestions))
+            return _result("clarify", question=question, horizon=horizon,
+                           company_mention=mention, llm_used=True,
+                           message=_suggestion_msg(mention, suggestions),
+                           suggestions=suggestions)
         logger.info("intent: could not resolve company mention %r -> clarify", mention)
         return _result("clarify", question=question, horizon=horizon,
                        company_mention=mention, message=_unresolved_msg(mention), llm_used=True)
@@ -210,6 +264,14 @@ def _unresolved_msg(mention: str | None) -> str:
             "(e.g. 'ITC', 'COALINDIA', 'INFY') or check the spelling."
         )
     return _GENERIC_CLARIFY_MSG
+
+
+def _suggestion_msg(mention: str | None, suggestions: list[dict]) -> str:
+    names = ", ".join(f"{s['ticker']} ({s['company_name']})" for s in suggestions)
+    return (
+        f"I couldn't find an exact NSE match for '{mention}'. "
+        f"Did you mean one of these? {names}"
+    )
 
 
 if __name__ == "__main__":

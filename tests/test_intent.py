@@ -201,7 +201,100 @@ def test_result_always_has_all_contract_keys(monkeypatch):
         "company_mention",
         "message",
         "llm_used",
+        "suggestions",
     }
+
+
+# ── NSE-master fuzzy resolution (fixture master from conftest.py) ─────
+def test_mention_auto_accepts_high_confidence_master_match(monkeypatch):
+    # "Canara Bank" is NOT in the alias CSV, but exactly matches the
+    # official name in the NSE master -> auto-accepted, intent preserved.
+    _mock_llm(
+        monkeypatch,
+        {
+            "intent": "dividend_qa",
+            "company_mention": "Canara Bank",
+            "question": "Will Canara Bank increase its dividend?",
+            "horizon": None,
+        },
+    )
+
+    result = intent.parse_query("Will Canara Bank increase its dividend?")
+
+    assert result["intent"] == "dividend_qa"
+    assert result["ticker"] == "CANBK"
+    assert result["suggestions"] == []
+
+
+def test_ambiguous_mention_returns_suggestions(monkeypatch):
+    _mock_llm(
+        monkeypatch,
+        {
+            "intent": "forecast_single",
+            "company_mention": "Canara",
+            "question": "Forecast Canara's dividend",
+            "horizon": None,
+        },
+    )
+
+    result = intent.parse_query("Forecast Canara's dividend")
+
+    assert result["intent"] == "clarify"
+    assert result["ticker"] is None
+    tickers = {s["ticker"] for s in result["suggestions"][:3]}
+    assert tickers == {"CANBK", "CANHLIFE", "CRAMC"}
+    assert "CANBK" in result["message"]
+
+
+def test_llm_clarify_with_resolvable_mention_recovers_to_forecast(monkeypatch):
+    # Regression: bare "Canara Bank" — the LLM punts to clarify but still
+    # extracts the mention; code-side resolution must recover it.
+    _mock_llm(
+        monkeypatch,
+        {
+            "intent": "clarify",
+            "company_mention": "Canara Bank",
+            "question": "Canara Bank",
+            "horizon": None,
+        },
+    )
+
+    result = intent.parse_query("Canara Bank")
+
+    assert result["intent"] == "forecast_single"
+    assert result["ticker"] == "CANBK"
+
+
+def test_llm_clarify_with_ambiguous_mention_gets_suggestions(monkeypatch):
+    _mock_llm(
+        monkeypatch,
+        {"intent": "clarify", "company_mention": "Canara", "question": "Canara", "horizon": None},
+    )
+
+    result = intent.parse_query("Canara Bank or something")
+
+    assert result["intent"] == "clarify"
+    assert {s["ticker"] for s in result["suggestions"][:3]} == {"CANBK", "CANHLIFE", "CRAMC"}
+
+
+def test_bare_token_partial_name_suggests_without_llm(monkeypatch):
+    calls = _mock_llm(monkeypatch, {"should": "not be called"})
+
+    result = intent.parse_query("Canara")
+
+    assert result["intent"] == "clarify"
+    assert len(result["suggestions"]) >= 3
+    assert calls == []  # suggestions produced with ZERO LLM calls
+
+
+def test_bare_master_symbol_resolves_without_llm(monkeypatch):
+    calls = _mock_llm(monkeypatch, {"should": "not be called"})
+
+    result = intent.parse_query("CANBK")
+
+    assert result["intent"] == "forecast_single"
+    assert result["ticker"] == "CANBK"
+    assert calls == []
 
 
 def test_llm_used_flag_tracks_actual_llm_usage(monkeypatch):

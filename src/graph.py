@@ -42,6 +42,7 @@ class DivisenseState(TypedDict, total=False):
     ticker: Optional[str]
     question: Optional[str]
     horizon: Optional[str]
+    suggestions: list  # "did you mean?" ticker candidates for clarify
     raw_data: Optional[dict]
     metrics: Optional[dict]
     rag_context: list
@@ -168,6 +169,7 @@ def intent_node(state: dict) -> dict:
         "ticker": parsed.get("ticker"),
         "question": parsed.get("question"),
         "horizon": parsed.get("horizon"),
+        "suggestions": parsed.get("suggestions") or [],
         # Bare-ticker short-circuits spend 0 LLM calls; everything else 1.
         "llm_calls": (state.get("llm_calls") or 0) + (1 if parsed.get("llm_used") else 0),
     }

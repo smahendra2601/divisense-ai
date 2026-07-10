@@ -138,6 +138,41 @@ def test_error_state_renders_error():
     assert any("Couldn't find market data" in e.value for e in at.error)
 
 
+# ── clarify with ticker suggestions ──────────────────────────────────
+_SUGGESTIONS = [
+    {"ticker": "CANBK", "company_name": "Canara Bank", "score": 0.75},
+    {"ticker": "CANHLIFE", "company_name": "Canara HSBC Life Insurance Company Limited", "score": 0.75},
+    {"ticker": "CRAMC", "company_name": "Canara Robeco Asset Management Company Limited", "score": 0.75},
+]
+
+
+def test_clarify_with_suggestions_renders_buttons():
+    state = _forecast_state(
+        intent="clarify", forecast=None, user_query="Canara", suggestions=_SUGGESTIONS
+    )
+    at = _seed(state).run()
+    assert not at.exception
+    labels = [b.label for b in at.button]
+    assert any("CANBK — Canara Bank" in lbl for lbl in labels)
+    assert any("CANHLIFE" in lbl for lbl in labels)
+
+
+def test_clicking_suggestion_runs_pipeline_for_that_ticker():
+    state = _forecast_state(
+        intent="clarify", forecast=None, user_query="Canara", suggestions=_SUGGESTIONS
+    )
+    at = _seed(state)
+    at.run()
+    suggestion_btn = next(b for b in at.button if "CANBK" in b.label)
+    with patch("src.graph.get_graph", return_value=_FakeGraph()):
+        suggestion_btn.click().run()
+
+    assert at.session_state["query_box"] == "CANBK"        # box filled
+    assert at.session_state["pending_query"] == "CANBK"    # and submitted
+    assert at.session_state["result_state"]["forecast"]    # pipeline ran
+    assert not at.exception
+
+
 # ── sidebar interaction contract ─────────────────────────────────────
 def test_example_click_fills_input_without_running():
     at = AppTest.from_file("app.py", default_timeout=30).run()

@@ -142,6 +142,27 @@ def _agent_trace(state: dict) -> str:
 # ── message branches ─────────────────────────────────────────────────
 def _clarify_report(state: dict) -> str:
     query = state.get("user_query") or ""
+    suggestions = state.get("suggestions") or []
+    if suggestions:
+        lines = [
+            "## 🤔 Did you mean one of these?",
+            "",
+            f"I couldn't find an exact NSE match for: _\"{query}\"_. Closest listed companies:",
+            "",
+        ]
+        lines += [
+            f"- **{s.get('ticker')}** — {s.get('company_name')} "
+            f"(match {round((s.get('score') or 0) * 100)}%)"
+            for s in suggestions
+        ]
+        lines += [
+            "",
+            "Re-run with the ticker you meant, e.g. "
+            f"`python forecast.py {suggestions[0].get('ticker')}`.",
+            "",
+            _disclaimer(),
+        ]
+        return "\n".join(lines)
     return (
         "## 🤔 Could you clarify?\n\n"
         f"I couldn't identify a single NSE-listed company to analyse in: _\"{query}\"_.\n\n"

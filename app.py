@@ -405,7 +405,31 @@ def render_agent_trace(state: dict) -> None:
             st.json(state["forecast"], expanded=False)
 
 
+def _select_suggestion(ticker: str) -> None:
+    # Selection = confirmation: fill the sidebar box and run immediately.
+    st.session_state["query_box"] = ticker
+    st.session_state["pending_query"] = ticker
+
+
 def render_clarify(state: dict) -> None:
+    suggestions = state.get("suggestions") or []
+    if suggestions:
+        st.warning(
+            f'🤔 I couldn\'t find an exact NSE match for: _"{state.get("user_query", "")}"_'
+        )
+        st.markdown("**Did you mean one of these?** Click to run the analysis:")
+        cols = st.columns(min(len(suggestions), 3))
+        for i, s in enumerate(suggestions):
+            with cols[i % len(cols)]:
+                st.button(
+                    f"{s.get('ticker')} — {s.get('company_name')}",
+                    key=f"suggestion_{i}",
+                    width="stretch",
+                    on_click=_select_suggestion,
+                    args=(s.get("ticker"),),
+                )
+                st.caption(f"match {round((s.get('score') or 0) * 100)}%")
+        return
     st.warning(
         f'🤔 I couldn\'t identify a single NSE-listed company in: _"{state.get("user_query", "")}"_'
     )
