@@ -477,6 +477,7 @@ def render_corporate_actions(ticker: str) -> None:
 def render_agent_trace(state: dict) -> None:
     metrics = state.get("metrics") or {}
     rag = state.get("rag_context") or []
+    news_items = state.get("news_context") or []
     critique = state.get("critique") or {}
 
     with st.expander("🔍 Agent trace"):
@@ -492,6 +493,9 @@ def render_agent_trace(state: dict) -> None:
         st.markdown(f"**RAG context:** {len(rag)} annual-report snippet(s)")
         for s in rag:
             st.caption(f"• {s.get('source_file')} p{s.get('page')} (score {_fmt(s.get('score'))})")
+        st.markdown(f"**News context:** {len(news_items)} recent article(s)")
+        for n in news_items:
+            st.caption(f"• [{n.get('title')}]({n.get('url')})")
         if critique:
             verdict = "approved ✅" if critique.get("approved") else "rejected ❌"
             st.markdown(f"**Critic:** {verdict}")

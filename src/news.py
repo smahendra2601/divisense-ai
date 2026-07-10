@@ -64,13 +64,21 @@ def _search_tavily(query: str, k: int) -> list[dict]:
     return body.get("results") or []
 
 
+class _NoResultsError(ValueError):
+    """Tavily returned no usable results. Raised (rather than returning [])
+    so diskcache doesn't memoize a transient empty response for a full TTL —
+    Tavily intermittently returns 0 results for queries that normally match."""
+
+
 @disk_cached(ttl=config.NEWS_CACHE_TTL_SECONDS)
 def _fetch_recent_news_cached(query: str, k: int) -> list[dict]:
     """Cached Tavily call, keyed on the exact query text. Raises on failure
-    (diskcache.memoize only caches successful returns, so a failure is
-    retried on the next call rather than cached)."""
+    (diskcache.memoize only caches successful returns, so failures — including
+    empty responses — are retried on the next call rather than cached)."""
     raw_results = _search_tavily(query, k)
-    return [
+    if not raw_results:  # transient Tavily flakiness; one immediate retry
+        raw_results = _search_tavily(query, k)
+    shaped = [
         {
             "title": r.get("title"),
             "url": r.get("url"),
@@ -80,6 +88,9 @@ def _fetch_recent_news_cached(query: str, k: int) -> list[dict]:
         for r in raw_results
         if r.get("title") or r.get("content")
     ]
+    if not shaped:
+        raise _NoResultsError(f"no news results for {query!r}")
+    return shaped
 
 
 def fetch_recent_news(ticker: str, company_name: str | None = None, k: int = config.NEWS_MAX_RESULTS) -> list[dict]:

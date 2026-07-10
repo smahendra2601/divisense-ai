@@ -176,6 +176,43 @@ def test_fetch_recent_news_cached_parses_and_shapes_results(monkeypatch, isolate
     assert hits[0]["score"] == 0.91
 
 
+def test_transient_empty_response_is_retried_once(monkeypatch, isolated_news_cache):
+    # Tavily intermittently returns 0 results; one immediate retry recovers.
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-secret")
+    responses = [
+        {"results": []},
+        {"results": [{"title": "T", "url": "u", "content": "c", "score": 0.5}]},
+    ]
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(1)
+        return _FakeResponse(responses[len(calls) - 1])
+
+    monkeypatch.setattr(news.urllib.request, "urlopen", fake_urlopen)
+    hits = news.fetch_recent_news("ITC", "ITC Limited")
+
+    assert len(calls) == 2  # empty first response triggered exactly one retry
+    assert [h["title"] for h in hits] == ["T"]
+
+
+def test_persistently_empty_response_is_not_cached(monkeypatch, isolated_news_cache):
+    # An empty result must not be memoized for the full TTL: the next query
+    # should hit the network again (empty raises internally; degrades to []).
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-secret")
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(1)
+        return _FakeResponse({"results": []})
+
+    monkeypatch.setattr(news.urllib.request, "urlopen", fake_urlopen)
+
+    assert news.fetch_recent_news("ITC", "ITC Limited") == []
+    assert news.fetch_recent_news("ITC", "ITC Limited") == []
+    assert len(calls) == 4  # 2 calls per fetch (retry), nothing served from cache
+
+
 def test_identical_query_is_cached_without_a_second_request(monkeypatch, isolated_news_cache):
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-secret")
     calls = []
