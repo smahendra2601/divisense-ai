@@ -7,7 +7,18 @@ hard-coded paths elsewhere in the codebase.
 from pathlib import Path
 
 # ── LLM models ────────────────────────────────────────────────────────
-GROQ_MODEL = "llama-3.3-70b-versatile"   # primary: fast, short reasoning
+# Primary reasoning model (Intent, Forecast, Critic). GPT-OSS-120B is an
+# open-weight REASONING model on Groq's free *production* tier — stronger
+# than llama-3.3-70b for the judgment/audit work here, and its 200K
+# tokens-per-day free cap (vs llama-3.3's 100K) doubles the daily budget,
+# which directly fixes the token-cap exhaustion seen in large backtests.
+GROQ_MODEL = "openai/gpt-oss-120b"
+# gpt-oss emits a chain-of-thought; "hidden" keeps it out of the response
+# so invoke_json() always sees clean JSON. "medium" balances audit quality
+# vs the 8K-tokens-per-minute free cap. Both are ignored for non-reasoning
+# Groq models (see llm_router._is_reasoning_model).
+GROQ_REASONING_FORMAT = "hidden"   # raw | parsed | hidden
+GROQ_REASONING_EFFORT = "medium"   # low | medium | high
 # Fallback: large-context / 429s. gemini-2.5-flash was retired by Google
 # (404 "no longer available", 2026-07); 3.x flash is 503-overloaded on the
 # free tier, so pin the lite tier which reliably answers. If this one ever

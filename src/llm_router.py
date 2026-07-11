@@ -2,7 +2,8 @@
 
 Single ``invoke(prompt, task_type)`` entry point plus
 ``invoke_json(prompt, schema_hint)``. Routes short reasoning to Groq
-(llama-3.3-70b-versatile) and long-context work to Gemini Flash.
+(openai/gpt-oss-120b, an open-weight reasoning model) and long-context
+work to Gemini Flash.
 Tracks per-provider RPM/RPD counters, auto-falls back to the other
 provider on a 429 or a *predicted* quota breach, and caches identical
 prompts in memory + on disk — free tiers exhaust fast, so cache
@@ -138,6 +139,17 @@ def clear_cache() -> None:
 
 
 # ── provider clients (built lazily so import never requires API keys) ─
+def _is_reasoning_model(model: str) -> bool:
+    """True for Groq models that emit a chain-of-thought (gpt-oss, R1, Qwen3, QwQ).
+
+    Reasoning models accept the ``reasoning_format`` / ``reasoning_effort``
+    params; general models (llama-*) reject them, so only forward those
+    knobs when the model actually supports them.
+    """
+    m = model.lower()
+    return any(tag in m for tag in ("gpt-oss", "deepseek-r1", "qwen3", "qwq"))
+
+
 def _build_groq_client():
     from langchain_groq import ChatGroq
 
@@ -146,11 +158,19 @@ def _build_groq_client():
         raise LLMConfigError(
             "GROQ_API_KEY is not set. Copy .env.example to .env and fill it in."
         )
+    extra: dict = {}
+    if _is_reasoning_model(config.GROQ_MODEL):
+        # Keep the chain-of-thought out of the response so invoke_json() sees
+        # clean JSON, and cap reasoning depth for the free-tier TPM budget.
+        # (langchain-groq exposes these as explicit ChatGroq params.)
+        extra["reasoning_format"] = config.GROQ_REASONING_FORMAT
+        extra["reasoning_effort"] = config.GROQ_REASONING_EFFORT
     return ChatGroq(
         model=config.GROQ_MODEL,
         api_key=api_key,
         temperature=0.2,
         timeout=config.LLM_TIMEOUT_SECONDS,
+        **extra,
     )
 
 
