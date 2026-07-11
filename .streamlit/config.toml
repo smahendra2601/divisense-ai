@@ -20,3 +20,12 @@ primaryColor = "#d9a441"
 
 [client]
 toolbarMode = "minimal"
+
+# Port/address are passed on the Render start command (--server.port=$PORT
+# --server.address=0.0.0.0) since $PORT is assigned dynamically; everything
+# else that matters for a public deploy is pinned here.
+[server]
+headless = true
+enableXsrfProtection = true
+enableCORS = true
+gatherUsageStats = false
