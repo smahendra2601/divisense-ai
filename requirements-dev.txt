@@ -1,0 +1,3 @@
+# Dev/CI-only — not installed on the Render production service.
+-r requirements.txt
+pytest==9.1.1
