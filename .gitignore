@@ -1,10 +1,6 @@
 # Secrets
 .env
 
-# Data artifacts (fetched / generated locally)
-data/annual_reports/
-data/chroma/
-
 # Caches
 __pycache__/
 *.py[cod]
@@ -14,10 +10,12 @@ __pycache__/
 .venv/
 venv/
 
-# Documents (keep binaries out of the repo)
+# Documents (keep binaries out of the repo, except the annual reports
+# committed on purpose so Render's RAG index works without a rebuild step)
 *.pdf
 *.ppt
 *.pptx
+!data/annual_reports/*.pdf
 
 # OS / editor noise
 .DS_Store
