@@ -14,12 +14,21 @@ Run with:  streamlit run app.py
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from src import config
 from src.ratio_engine import _annual_dividends  # FY-attributed dividend totals
+
+# streamlit run app.py never triggers any module's __main__ guard, so this
+# is the only place that configures logging for the whole process — without
+# it, llm_router's routing/quota-skip logs and the logger.exception() calls
+# in graph.py are silently dropped instead of reaching Render's log stream.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 # ── page + styling ───────────────────────────────────────────────────
 st.set_page_config(
@@ -318,8 +327,11 @@ def execute(query: str) -> dict:
                     if update:
                         state.update(update)
             status.update(label="✅ Analysis complete", state="complete", expanded=False)
-        except Exception as exc:  # noqa: BLE001 - surface as a friendly message
-            state.setdefault("errors", []).append(f"Unexpected error: {exc}")
+        except Exception:  # noqa: BLE001 - surface as a friendly message
+            logger.exception("execute(): pipeline run failed for query %r", query)
+            state.setdefault("errors", []).append(
+                "Something went wrong while running the analysis. Try again in a moment."
+            )
             status.update(label="⚠️ Something went wrong", state="error")
 
     return state
