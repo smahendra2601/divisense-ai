@@ -2,12 +2,13 @@
 
 Parses an annual-report PDF with pdfplumber, chunks it at
 ``config.RAG_CHUNK_SIZE`` tokens with ``config.RAG_CHUNK_OVERLAP`` token
-overlap (measured with the embedding model's own tokenizer), embeds each
-chunk locally with sentence-transformers (no API), and upserts them into
-the persistent Chroma ``annual_reports`` collection with metadata
-``{ticker, source_file, page}``. Annual reports are static documents, so
-pre-embedding them does not violate the fetch-on-demand freshness
-principle.
+overlap (measured with the same ONNX tokenizer rag.py embeds with), and
+upserts the chunks into the persistent Chroma ``annual_reports``
+collection with metadata ``{ticker, source_file, page}`` — Chroma embeds
+them itself via the collection's attached embedding function (see
+``rag.get_embedding_function``), so ingestion and retrieval always embed
+identically. Annual reports are static documents, so pre-embedding them
+does not violate the fetch-on-demand freshness principle.
 
 Chunking is done **per page** so the ``page`` metadata is always exact;
 most report pages fall under one chunk, dense pages split into several
@@ -37,9 +38,31 @@ import os
 import sys
 
 from . import config
-from .rag import embed_texts, get_collection, get_embedding_model
+from .rag import get_collection, get_embedding_function
 
 logger = logging.getLogger(__name__)
+
+_tokenizer = None
+
+
+def _get_chunking_tokenizer():
+    """A raw (untruncated) tokenizer for finding chunk-boundary offsets.
+
+    Loaded from the same ONNX model bundle rag.py's embedding function
+    uses, so token counts here match what actually gets embedded.
+    Deliberately not the embedding function's own ``.tokenizer`` — that
+    one forces truncation/padding to 256 tokens for its own inference
+    use, which would corrupt full-page chunk-boundary math.
+    """
+    global _tokenizer
+    if _tokenizer is None:
+        from tokenizers import Tokenizer
+
+        embed_fn = get_embedding_function()
+        embed_fn(["_warmup"])  # triggers the one-time model+tokenizer.json download
+        tok_path = embed_fn.DOWNLOAD_PATH / embed_fn.EXTRACTED_FOLDER_NAME / "tokenizer.json"
+        _tokenizer = Tokenizer.from_file(str(tok_path))
+    return _tokenizer
 
 
 def extract_pages(pdf_path: str) -> list[tuple[int, str]]:
@@ -63,58 +86,30 @@ def chunk_page_text(
 ) -> list[str]:
     """Split ``text`` into overlapping token windows, preserving original text.
 
-    Uses the embedding model's fast tokenizer to find token boundaries,
+    Uses the fast tokenizer's offset mapping to find token boundaries,
     then slices the source string by character offsets so formatting is
-    kept. Falls back to detokenized decoding if offset mapping is
-    unavailable.
+    kept (no detokenization, so casing/whitespace are exact).
     """
     if not text:
         return []
 
-    # Silence the expected "token indices sequence length is longer than 256"
-    # notice — we tokenize only to find chunk boundaries here, not to embed,
-    # and it would otherwise fire once per page on a real report.
-    try:
-        from transformers.utils import logging as _hf_logging
-
-        _hf_logging.set_verbosity_error()
-    except Exception:  # pragma: no cover - transformers internals may move
-        pass
-
-    tokenizer = get_embedding_model().tokenizer
+    tokenizer = _get_chunking_tokenizer()
     step = max(size - overlap, 1)
 
-    try:
-        encoding = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
-        offsets = encoding["offset_mapping"]
-    except (TypeError, KeyError, NotImplementedError):
-        offsets = None
+    encoding = tokenizer.encode(text, add_special_tokens=False)
+    offsets = encoding.offsets
 
     chunks: list[str] = []
-    if offsets:
-        n = len(offsets)
-        for start in range(0, n, step):
-            window = offsets[start : start + size]
-            if not window:
-                break
-            chunk = text[window[0][0] : window[-1][1]].strip()
-            if chunk:
-                chunks.append(chunk)
-            if start + size >= n:
-                break
-    else:
-        # Fallback: decode token windows directly (loses original casing).
-        ids = tokenizer.encode(text, add_special_tokens=False)
-        n = len(ids)
-        for start in range(0, n, step):
-            window = ids[start : start + size]
-            if not window:
-                break
-            chunk = tokenizer.decode(window).strip()
-            if chunk:
-                chunks.append(chunk)
-            if start + size >= n:
-                break
+    n = len(offsets)
+    for start in range(0, n, step):
+        window = offsets[start : start + size]
+        if not window:
+            break
+        chunk = text[window[0][0] : window[-1][1]].strip()
+        if chunk:
+            chunks.append(chunk)
+        if start + size >= n:
+            break
 
     return chunks
 
@@ -155,12 +150,8 @@ def ingest_pdf(ticker: str, pdf_path: str) -> int:
         return 0
 
     logger.info("pdf_ingest: embedding %d chunk(s) from %d page(s)", len(documents), len(pages))
-    embeddings = embed_texts(documents)
-
     collection = get_collection(create=True)
-    collection.upsert(
-        ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas
-    )
+    collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
     logger.info("pdf_ingest: upserted %d chunk(s) for %s from %s", len(ids), ticker, source_file)
     return len(ids)
 

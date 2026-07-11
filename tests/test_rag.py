@@ -17,9 +17,7 @@ from src import rag
 @pytest.fixture(autouse=True)
 def _reset_singletons(monkeypatch):
     monkeypatch.setattr(rag, "_collection", None)
-    monkeypatch.setattr(rag, "_model", None)
-    # Never load the real embedding model in these tests.
-    monkeypatch.setattr(rag, "embed_texts", lambda texts: [[0.0, 0.1, 0.2] for _ in texts])
+    monkeypatch.setattr(rag, "_embedding_function", None)
     yield
 
 
@@ -28,7 +26,7 @@ class _FakeCollection:
         self._response = response
         self.last_query = None
 
-    def query(self, query_embeddings, n_results, where):
+    def query(self, query_texts, n_results, where):
         self.last_query = {"n_results": n_results, "where": where}
         return self._response
 

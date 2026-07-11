@@ -59,6 +59,9 @@ TICKER_MAX_SUGGESTIONS = 5
 # ── RAG (annual-report ingestion & retrieval) ────────────────────────
 RAG_CHUNK_SIZE = 800      # tokens per chunk
 RAG_CHUNK_OVERLAP = 100   # token overlap between chunks
+# Served via chromadb's built-in ONNX runtime (src/rag.py), not the
+# sentence-transformers/torch package — that combination alone measured
+# ~330MB RSS, enough to push Render's 512MB free-tier instance into OOM.
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # ── Paths ─────────────────────────────────────────────────────────────
