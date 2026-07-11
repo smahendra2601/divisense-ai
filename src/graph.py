@@ -195,16 +195,18 @@ def data_node(state: dict) -> dict:
         raw = data_agent.fetch_company_data(ticker)
     except data_agent.InvalidTickerError as exc:
         return _append_error(state, f"Couldn't find market data for '{ticker}': {exc}")
-    except Exception as exc:  # noqa: BLE001
-        return _append_error(state, f"Data fetch failed for '{ticker}': {exc}")
+    except Exception:  # noqa: BLE001
+        logger.exception("data_node: fetch failed for '%s'", ticker)
+        return _append_error(state, f"Couldn't fetch market data for '{ticker}' right now. Try again in a moment.")
     return {"raw_data": raw, "data_timestamp": raw.get("data_timestamp")}
 
 
 def ratio_node(state: dict) -> dict:
     try:
         metrics = ratio_engine.compute_metrics(state.get("raw_data") or {})
-    except Exception as exc:  # noqa: BLE001
-        return _append_error(state, f"Metric computation failed: {exc}")
+    except Exception:  # noqa: BLE001
+        logger.exception("ratio_node: metric computation failed")
+        return _append_error(state, "Couldn't compute financial metrics from the fetched data. Try again in a moment.")
     return {"metrics": metrics}
 
 
@@ -227,8 +229,12 @@ def forecast_node(state: dict) -> dict:
         forecast = llm_router.invoke_json(
             _forecast_prompt(state), _FORECAST_SCHEMA, task_type="reasoning"
         )
-    except Exception as exc:  # noqa: BLE001
-        return {**_append_error(state, f"Forecast step failed: {exc}"), "llm_calls": llm_calls}
+    except Exception:  # noqa: BLE001
+        logger.exception("forecast_node: forecast step failed")
+        return {
+            **_append_error(state, "The forecast step failed — this is usually a temporary LLM rate limit. Try again in a moment."),
+            "llm_calls": llm_calls,
+        }
 
     updates = {"forecast": forecast, "llm_calls": llm_calls}
     critique = state.get("critique")
@@ -244,8 +250,12 @@ def critic_node(state: dict) -> dict:
         critique = llm_router.invoke_json(
             _critic_prompt(state), _CRITIC_SCHEMA, task_type="reasoning"
         )
-    except Exception as exc:  # noqa: BLE001
-        return {**_append_error(state, f"Critic step failed: {exc}"), "llm_calls": llm_calls}
+    except Exception:  # noqa: BLE001
+        logger.exception("critic_node: critic step failed")
+        return {
+            **_append_error(state, "The review step failed — this is usually a temporary LLM rate limit. Try again in a moment."),
+            "llm_calls": llm_calls,
+        }
     return {"critique": critique, "llm_calls": llm_calls}
 
 
