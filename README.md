@@ -206,6 +206,55 @@ verdict, attached to every answer:**
 
 ---
 
+## Deploy to Render
+
+The app deploys as-is to [Render](https://render.com)'s free tier via the committed
+**`render.yaml`** — no Dockerfile needed. The annual-report PDFs and the pre-built
+Chroma RAG index are committed to the repo (see `data/annual_reports/`,
+`data/chroma/`) specifically so a fresh Render deploy has RAG context immediately,
+with no re-ingestion step and no persistent disk required.
+
+### 1. Create the Render service
+
+1. Push this repo (or your fork) to GitHub.
+2. In the Render dashboard: **New → Blueprint**, point it at the repo — Render reads
+   `render.yaml` and provisions the web service automatically (free plan, `pip
+   install -r requirements.txt`, `streamlit run app.py --server.port=$PORT
+   --server.address=0.0.0.0`).
+3. Under the service's **Environment** tab, set these secrets (never commit real
+   values — `render.yaml` deliberately lists them as `sync: false`):
+
+   | Variable | Required? | Notes |
+   |---|---|---|
+   | `GROQ_API_KEY` | Yes | Consider generating a key dedicated to this deployment rather than reusing a local dev key. |
+   | `GOOGLE_API_KEY` | Yes | Same — a fresh key for production is safer than reusing one that's been in a local `.env`. |
+   | `TAVILY_API_KEY` | Optional | News context; the app runs identically without it. |
+   | `APP_PASSWORD` | Recommended | Gates the whole app behind a shared password (see `app.py`'s `_require_password`). Leave unset only if the app should be fully open. |
+
+4. Deploy. First boot on the free tier can take a minute or two (cold start); the
+   service also spins down after ~15 minutes idle and cold-starts again on the next
+   visit — expected free-tier behavior, not a bug.
+
+### 2. Point a custom domain (GoDaddy) at it
+
+1. In Render: the service → **Settings → Custom Domains → Add Custom Domain**, enter
+   your domain (e.g. `app.yourdomain.com`). Render shows the exact DNS record to
+   create — a **CNAME** target for a subdomain, or an **A/ALIAS** record for an apex
+   (root) domain.
+2. In GoDaddy: **My Products → DNS → Manage** for the domain, add that exact record
+   under **DNS Records**.
+3. Wait for DNS to propagate (often minutes, allow up to 24–48h). Render auto-issues
+   a free TLS certificate once it verifies the record — the custom domain then serves
+   over HTTPS automatically.
+
+### 3. Updating the deployed RAG data
+
+To add or refresh an annual report: drop the PDF in `data/annual_reports/`, run
+`python -m src.pdf_ingest <TICKER> <path>` locally, then commit and push both the PDF
+and the updated `data/chroma/` contents — Render redeploys automatically on push.
+
+---
+
 ## Enhancement roadmap
 
 The architecture leaves clear plug-in points for post-MVP work (full table in
@@ -220,7 +269,9 @@ The architecture leaves clear plug-in points for post-MVP work (full table in
   *(recent-news **context** already shipped via `news.py`)*; cleaner news context
   (relevance-score floor and/or an LLM summarizer node).
 - **v2.0** — FastAPI + React frontend and multi-user; PostgreSQL forecast history;
-  Docker deploy.
+  Dockerized deploy *(the current Streamlit app already deploys directly to Render —
+  see [Deploy to Render](#deploy-to-render) — this item is the future FastAPI/React
+  rewrite's own containerized deploy, not a duplicate of that)*.
 - **v2.1** — Local LLM option (Ollama) for zero-quota operation; portfolio mode.
 
 ---
