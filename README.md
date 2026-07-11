@@ -235,6 +235,13 @@ with no re-ingestion step and no persistent disk required.
    service also spins down after ~15 minutes idle and cold-starts again on the next
    visit — expected free-tier behavior, not a bug.
 
+**Memory note:** the free tier caps each instance at 512MB. RAG retrieval uses
+Chroma's built-in ONNX embedding runtime rather than `sentence-transformers`/`torch` —
+that combination alone measured ~330MB of resident memory in testing, enough to OOM
+the instance. A full pipeline run (Streamlit + RAG) now measures ~350MB, leaving
+headroom. If you extend the RAG path, re-check memory before adding back a
+torch-based library.
+
 ### 2. Point a custom domain (GoDaddy) at it
 
 1. In Render: the service → **Settings → Custom Domains → Add Custom Domain**, enter
