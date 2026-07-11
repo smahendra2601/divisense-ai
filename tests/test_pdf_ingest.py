@@ -1,9 +1,9 @@
 """Tests for src/pdf_ingest.py (Tier 1 — PDF → Chroma).
 
 Chunking is tested with a stubbed tokenizer (offset-mapping based, like
-the real fast tokenizer) so token-window math and overlap are verified
-without loading the model. ingest_pdf's orchestration is tested with
-extract_pages, the embedder, and the collection all faked — argument
+the real tokenizers.Tokenizer) so token-window math and overlap are
+verified without downloading the ONNX model. ingest_pdf's orchestration
+is tested with extract_pages and the collection faked — argument
 validation, id/metadata construction, and upsert wiring, no PDF or model
 required. A real PDF round-trip is covered separately by the module's
 manual check.
@@ -16,10 +16,15 @@ import pytest
 from src import pdf_ingest
 
 
-class _FakeTokenizer:
-    """Mimics a HF fast tokenizer: 1 token per whitespace word, with offsets."""
+class _FakeEncoding:
+    def __init__(self, offsets):
+        self.offsets = offsets
 
-    def __call__(self, text, add_special_tokens=False, return_offsets_mapping=False):
+
+class _FakeTokenizer:
+    """Mimics tokenizers.Tokenizer: 1 token per whitespace word, with offsets."""
+
+    def encode(self, text, add_special_tokens=False):
         offsets = []
         i = 0
         for word in text.split(" "):
@@ -27,19 +32,12 @@ class _FakeTokenizer:
                 start = text.index(word, i)
                 offsets.append((start, start + len(word)))
                 i = start + len(word)
-        return {"offset_mapping": offsets}
-
-    def encode(self, text, add_special_tokens=False):
-        return text.split()
-
-
-class _FakeModel:
-    tokenizer = _FakeTokenizer()
+        return _FakeEncoding(offsets)
 
 
 @pytest.fixture
 def fake_model(monkeypatch):
-    monkeypatch.setattr(pdf_ingest, "get_embedding_model", lambda: _FakeModel())
+    monkeypatch.setattr(pdf_ingest, "_get_chunking_tokenizer", lambda: _FakeTokenizer())
 
 
 # ── chunk_page_text ─────────────────────────────────────────────────
@@ -78,10 +76,8 @@ class _FakeCollection:
     def __init__(self):
         self.upserts = []
 
-    def upsert(self, ids, documents, embeddings, metadatas):
-        self.upserts.append(
-            {"ids": ids, "documents": documents, "embeddings": embeddings, "metadatas": metadatas}
-        )
+    def upsert(self, ids, documents, metadatas):
+        self.upserts.append({"ids": ids, "documents": documents, "metadatas": metadatas})
 
 
 def test_ingest_pdf_rejects_blank_ticker(fake_model):
@@ -103,7 +99,6 @@ def test_ingest_pdf_builds_ids_metadata_and_upserts(monkeypatch, tmp_path, fake_
         "extract_pages",
         lambda path: [(1, "dividend policy text"), (7, "capital allocation text")],
     )
-    monkeypatch.setattr(pdf_ingest, "embed_texts", lambda docs: [[0.0] for _ in docs])
     fake_collection = _FakeCollection()
     monkeypatch.setattr(pdf_ingest, "get_collection", lambda create=True: fake_collection)
 

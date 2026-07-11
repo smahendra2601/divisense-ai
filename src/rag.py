@@ -1,8 +1,12 @@
 """Tier 2 — Knowledge: RAG retrieval over annual reports.
 
 Queries a persistent Chroma collection for dividend-policy /
-capital-allocation snippets for a ticker, using the local embedding
-model (``sentence-transformers/all-MiniLM-L6-v2``) — zero API cost.
+capital-allocation snippets for a ticker, using Chroma's bundled ONNX
+build of ``sentence-transformers/all-MiniLM-L6-v2`` — zero API cost, and
+deliberately not the ``sentence-transformers``/``torch`` package: that
+combination alone measured ~330MB of resident memory in production,
+which pushed the Streamlit process over Render's 512MB free-tier limit.
+The ONNX runtime path lands the same model in well under half that.
 
 ``retrieve(ticker, query, k)`` is the public entry point. It is written
 to **fail soft**: if Chroma is missing, empty, or has no documents for
@@ -10,7 +14,7 @@ the ticker — or anything else goes wrong — it returns ``[]`` so the rest
 of the pipeline runs without RAG context rather than crashing.
 
 This module also owns the two resources shared with ``pdf_ingest`` (the
-embedding model and the Chroma collection) so ingestion and retrieval
+embedding function and the Chroma collection) so ingestion and retrieval
 embed identically and read/write the same store.
 """
 
@@ -23,33 +27,33 @@ from . import config
 logger = logging.getLogger(__name__)
 
 # All annual-report chunks live in one collection, partitioned by the
-# ``ticker`` metadata field. Cosine space matches our normalized embeddings.
+# ``ticker`` metadata field. Cosine space matches the embedding function's
+# normalized vectors.
 COLLECTION_NAME = "annual_reports"
 
 DEFAULT_QUERY = "dividend policy capital allocation payout"
 
 # Lazily-initialized singletons — importing this module must stay cheap
-# (the pipeline imports it always; the heavy model loads only on first use).
-_model = None
+# (the pipeline imports it always; the ONNX runtime loads only on first use).
+_embedding_function = None
 _collection = None
 
 
-def get_embedding_model():
-    """Load and cache the local sentence-transformers model (no network at query time)."""
-    global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
+def get_embedding_function():
+    """Load and cache Chroma's built-in ONNX embedding function (no torch).
 
-        logger.info("rag: loading embedding model %s", config.EMBEDDING_MODEL)
-        _model = SentenceTransformer(config.EMBEDDING_MODEL)
-    return _model
+    First call downloads the ~80MB ONNX model bundle to
+    ``~/.cache/chroma/onnx_models/`` if not already cached there — a
+    one-time cost per fresh filesystem (e.g. each Render cold start on
+    the free tier, which has no persistent disk).
+    """
+    global _embedding_function
+    if _embedding_function is None:
+        from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
-
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Embed a list of texts into normalized vectors (cosine-ready)."""
-    model = get_embedding_model()
-    vectors = model.encode(list(texts), normalize_embeddings=True, show_progress_bar=False)
-    return [v.tolist() for v in vectors]
+        logger.info("rag: loading ONNX embedding function (%s)", config.EMBEDDING_MODEL)
+        _embedding_function = ONNXMiniLM_L6_V2()
+    return _embedding_function
 
 
 def get_collection(create: bool = True):
@@ -81,7 +85,9 @@ def get_collection(create: bool = True):
             return None
 
     _collection = client.get_or_create_collection(
-        name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
+        name=COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine"},
+        embedding_function=get_embedding_function(),
     )
     return _collection
 
@@ -107,9 +113,8 @@ def retrieve(ticker: str, query: str = DEFAULT_QUERY, k: int = 4) -> list[dict]:
             logger.info("rag: no collection yet; returning empty context for %s", ticker)
             return []
 
-        query_embedding = embed_texts([query])[0]
         results = collection.query(
-            query_embeddings=[query_embedding],
+            query_texts=[query],
             n_results=k,
             where={"ticker": ticker},
         )

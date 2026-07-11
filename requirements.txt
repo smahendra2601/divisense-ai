@@ -1,8 +1,3 @@
-# CPU-only torch — sentence-transformers pulls torch transitively, and the
-# default PyPI index ships a much larger CUDA-enabled wheel that risks
-# blowing Render's free-tier build time/disk. This index is checked first.
---extra-index-url https://download.pytorch.org/whl/cpu
-
 langgraph==1.2.8
 langchain==1.3.12
 langchain-groq==1.1.3
@@ -10,8 +5,6 @@ langchain-google-genai==4.2.7
 yfinance==1.5.1
 pandas==3.0.3
 chromadb==1.5.9
-sentence-transformers==5.6.0
-torch==2.13.0
 pdfplumber==0.11.10
 streamlit==1.59.1
 diskcache==5.6.3
