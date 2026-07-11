@@ -97,7 +97,7 @@
 | `ratio_engine.py` | Pure pandas computation: payout ratio (5yr), dividend CAGR, FCF/dividend coverage, consecutive-increase streak, current yield, debt/equity trend, dividend consistency score, **recent dividend trajectory (last 4 payouts: rising/flat/falling)** — the trajectory feature directly powers "will it increase?" answers. Returns structured `metrics` dict. | **NO LLM involvement.** All financial numbers are computed in code. |
 | `rag.py` | Query Chroma for dividend-policy / capital-allocation snippets for the ticker. Local embedding model (`sentence-transformers/all-MiniLM-L6-v2`) — zero API cost. | If no documents exist for a ticker, return empty context gracefully (pipeline must still work). |
 | `news.py` | Fetch recent dividend-relevant news snippets via the Tavily web-search API (`fetch_recent_news(ticker, company_name)`) — special-dividend rumors, board announcements, regulatory/tax risk that a once-a-year annual report can't see. Deterministic retrieval (fixed query `"{company} dividend announcement"`, `topic=general`, `time_range=year`); **zero LLM calls**; stdlib `urllib` (no new dep); 1-hour disk cache. | **Optional context source, fail-soft like `rag.py`:** no `TAVILY_API_KEY`, a network error, or a timeout all degrade to `[]`, never raising. Snippets are **qualitative context only — never a source of numbers** (see Tier 3 node 3b). |
-| `llm_router.py` | Single `invoke(prompt, task_type)` entry point + `invoke_json(prompt, schema_hint)`. Routes: short reasoning → Groq (`llama-3.3-70b-versatile`); long-context → Gemini Flash. Tracks per-provider RPM/RPD counters; auto-fallback on 429; caches identical prompts. | Free tiers: Groq ≈ 30 RPM / low TPM; Gemini Flash ≈ 1,500 req/day. Both exhaust fast — cache aggressively. |
+| `llm_router.py` | Single `invoke(prompt, task_type)` entry point + `invoke_json(prompt, schema_hint)`. Routes: short reasoning → Groq (`openai/gpt-oss-120b`, an open-weight **reasoning** model — chain-of-thought kept out of the response via `reasoning_format="hidden"`, depth capped via `reasoning_effort="medium"`); long-context → Gemini Flash. Tracks per-provider RPM/RPD counters; auto-fallback on 429; caches identical prompts. | Free tiers: Groq gpt-oss-120b ≈ 200K tokens/day (vs 100K for llama-3.3-70b, the prior default — directly addresses token-cap exhaustion seen in large backtests) / low TPM; Gemini Flash ≈ 1,500 req/day. Both exhaust fast — cache aggressively. |
 
 ### Tier 3 — Agentic Orchestration (LangGraph)
 State object (`DivisenseState`, TypedDict): `user_query`, `intent`, `ticker`, `question`, `horizon`, `raw_data`, `metrics`, `rag_context`, `news_context`, `forecast`, `critique`, `retry_count`, `final_report`, `errors`, `data_timestamp`.
@@ -232,7 +232,7 @@ divisense-ai/
 | v1.1 | **Screener.in fundamentals enrichment** | Additional fetcher inside `data_agent.py` merged into `raw_data` |
 | v1.1 | **Multi-turn conversation memory** ("what about TCS?") | LangGraph checkpointer + Streamlit session state |
 | v1.2 | **Scheduled watchlist monitoring + alerts** (APScheduler → email/Telegram) | New `scheduler.py` calling the existing pipeline |
-| v1.2 | **Backtesting module** — hide latest dividend, measure forecast accuracy | New `backtest.py` reusing `graph.py` |
+| v1.2 | **Backtesting module** — hide latest dividend, measure forecast accuracy | *Already shipped* as `backtest.py`, reusing `graph.py` wholesale |
 | v1.3 | **Peer/sector comparison agent** | New node in `graph.py` |
 | v1.3 | **News & announcement sentiment agent** — _recent-news **context** already delivered in MVP (`news.py` + News Node, Tavily web search, deterministic/fail-soft). Remaining future work: LLM **sentiment scoring** of announcements and folding structured news facts into `corp_actions.py`._ | Extend the existing News Node; new sentiment step (weigh against the ≤3-call budget) |
 | v1.3 | **Cleaner news context** — the `year` window can surface low-signal hits (social posts, generic pages). Two levers: a deterministic **relevance-score floor** (zero cost) and/or an **LLM news-summarizer node** that distills raw snippets into one "recent developments" note before the Forecast Agent (+1 LLM call → raises the budget ceiling to 4). | Tune filtering inside `news.py`; optional new summarizer node in `graph.py` (weigh against the ≤3-call budget) |
@@ -244,4 +244,4 @@ divisense-ai/
 
 ---
 
-*Last updated: 2026-07-10. Treat §2–§6 as binding; §7 as the open runway.*
+*Last updated: 2026-07-11. Treat §2–§6 as binding; §7 as the open runway.*
