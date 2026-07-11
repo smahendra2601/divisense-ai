@@ -18,7 +18,10 @@
 | `clarify` | Ambiguous/unparseable input | Friendly request to rephrase, with examples |
 
 **Constraints:**
-- Runs entirely on a local laptop (no cloud infra)
+- Runs entirely on a local laptop (no cloud infra required) — and, unchanged
+  architecturally, optionally deploys as-is to Render's free tier behind a custom
+  domain (see README's "Deploy to Render"); RAG data ships in the repo instead of a
+  managed store, so there's still no infra dependency beyond the two free LLM APIs
 - Free-tier LLM APIs only (Groq primary, Google Gemini fallback)
 - Fetch-on-demand data model — no pre-ingested database of market data (freshness by design)
 - 3-day MVP timeline; architecture must leave enhancement paths open (see §7)
@@ -238,7 +241,7 @@ divisense-ai/
 | v1.3 | **Cleaner news context** — the `year` window can surface low-signal hits (social posts, generic pages). Two levers: a deterministic **relevance-score floor** (zero cost) and/or an **LLM news-summarizer node** that distills raw snippets into one "recent developments" note before the Forecast Agent (+1 LLM call → raises the budget ceiling to 4). | Tune filtering inside `news.py`; optional new summarizer node in `graph.py` (weigh against the ≤3-call budget) |
 | v2.0 | **FastAPI backend + React frontend**; multi-user | Tier 4 swap; Tiers 1–3 untouched |
 | v2.0 | **PostgreSQL + persistent forecast history** | Replace ad-hoc state persistence in Report Node |
-| v2.0 | **Dockerize + deploy** (Railway/Render free tier) | Infra only |
+| v2.0 | **Dockerize + deploy** (Railway) | Infra only. *A direct Streamlit→Render deploy (free tier, `render.yaml`, custom domain via GoDaddy DNS, RAG data committed to the repo, shared-password gate) already shipped ahead of this — see README's "Deploy to Render". This v2.0 item is Docker-izing the future FastAPI/React rewrite specifically, not a duplicate.* |
 | v2.1 | **Local LLM option (Ollama)** for zero-quota operation | New provider in `llm_router.py` |
 | v2.1 | **Portfolio mode** — holdings CSV → portfolio dividend income forecast | New Streamlit page looping the pipeline |
 
