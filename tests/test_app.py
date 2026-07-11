@@ -221,3 +221,28 @@ def test_execute_streams_and_stores_result():
     assert stored["ticker"] == "ITC"
     assert stored["forecast"]["amount_range_inr"] == {"low": 14.0, "high": 16.0}
     assert stored["critique"]["approved"] is True
+
+
+# ── APP_PASSWORD access gate ──────────────────────────────────────────
+def test_no_gate_when_app_password_unset(monkeypatch):
+    monkeypatch.delenv("APP_PASSWORD", raising=False)
+    at = AppTest.from_file("app.py", default_timeout=30).run()
+    assert not at.exception
+    assert not any("password-protected" in c.value.lower() for c in at.caption)
+
+
+def test_gate_blocks_until_correct_password(monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD", "s3cret")
+    at = AppTest.from_file("app.py", default_timeout=30).run()
+    assert not at.exception
+    # gated: no example chips, no disclaimer — main() stopped at the gate
+    assert not any("COALINDIA" == b.label for b in at.button)
+
+    at.text_input(key="_password_input").set_value("wrong").run()
+    next(b for b in at.button if b.label == "Enter").click().run()
+    assert any("Incorrect password" in e.value for e in at.error)
+
+    at.text_input(key="_password_input").set_value("s3cret").run()
+    next(b for b in at.button if b.label == "Enter").click().run()
+    assert not at.exception
+    assert any("COALINDIA" == b.label for b in at.button)  # past the gate now
