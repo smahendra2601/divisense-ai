@@ -15,13 +15,21 @@ Run with:  streamlit run app.py
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
 
 from src import config
 from src.ratio_engine import _annual_dividends  # FY-attributed dividend totals
+
+# Populate os.environ from .env before anything (notably _require_password,
+# which runs before src.graph is ever imported) reads an env var. Matches
+# llm_router.py/news.py's own load_dotenv call — safe/idempotent either way.
+load_dotenv(dotenv_path=config.PROJECT_ROOT / ".env", override=False)
 
 # streamlit run app.py never triggers any module's __main__ guard, so this
 # is the only place that configures logging for the whole process — without
@@ -651,8 +659,33 @@ def render(state: dict) -> None:
         st.caption("⚠️ Validation was incomplete: " + "; ".join(state["errors"]))
 
 
+# ── access gate ───────────────────────────────────────────────────────
+def _require_password() -> None:
+    """Gate the whole app behind APP_PASSWORD if it's set in the environment.
+
+    Unset (local dev, CI, no env var configured) skips the gate entirely —
+    mirrors the optional-secret pattern already used for TAVILY_API_KEY, so
+    local workflows stay frictionless and only a real deploy needs a secret.
+    """
+    required = os.environ.get("APP_PASSWORD")
+    if not required or st.session_state.get("authed"):
+        return
+
+    st.title("📈 DiviSense AI")
+    st.caption("This deployment is password-protected.")
+    pwd = st.text_input("Password", type="password", key="_password_input")
+    if st.button("Enter", type="primary"):
+        if secrets.compare_digest(pwd, required):
+            st.session_state["authed"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    st.stop()
+
+
 # ── page body ────────────────────────────────────────────────────────
 def main() -> None:
+    _require_password()
     render_sidebar()
 
     pending = st.session_state.get("pending_query")
